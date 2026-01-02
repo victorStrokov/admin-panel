@@ -1,53 +1,100 @@
 'use client';
 
-import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import toast from 'react-hot-toast';
+import { getOrCreateDeviceId } from '@/shared/lib/device-id';
 import { useRouter } from 'next/navigation';
+import { loginFormSchema } from '@/shared/lib/validation/login-form-schema';
+import React from 'react';
+
+type LoginForm = z.infer<typeof loginFormSchema>;
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const router = useRouter();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginForm>({
+    resolver: zodResolver(loginFormSchema),
+  });
 
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
+  async function onSubmit(data: LoginForm) {
+    const deviceId = getOrCreateDeviceId();
 
     const res = await fetch('/api/auth/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-device-id': deviceId,
+      },
+      body: JSON.stringify({ ...data, deviceId }),
     });
 
     if (res.ok) {
-      router.push('/admin'); // редирект в админку
+      toast.success('Вы успешно вошли в аккаунт', { icon: '✅' });
+      setTimeout(() => {
+        router.push('/admin');
+      }, 1000);
     } else {
-      const data = await res.json();
-      alert(data.error || 'Ошибка входа');
+      toast.error(
+        'Не удалось войти в аккаунт, не правильный логин или пароль!',
+        {
+          icon: '❌',
+        }
+      );
     }
   }
 
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('logout') === '1') {
+      toast.success('Вы вышли из системы', { icon: '✅' });
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, []);
+
   return (
     <form
-      onSubmit={handleLogin}
-      className='p-6 space-y-4'>
+      onSubmit={handleSubmit(onSubmit)}
+      className='p-6 space-y-4 max-w-sm mx-auto'>
       <h1 className='text-2xl font-bold'>Вход</h1>
-      <input
-        type='email'
-        placeholder='Email'
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        className='border p-2 w-full'
-      />
-      <input
-        type='password'
-        placeholder='Пароль'
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        className='border p-2 w-full'
-      />
+
+      {/* Email */}
+      <div>
+        <input
+          type='email'
+          placeholder='Email'
+          {...register('email')}
+          className='border p-2 w-full rounded'
+        />
+        {errors.email && (
+          <p className='text-red-600 text-sm mt-1'>{errors.email.message}</p>
+        )}
+      </div>
+
+      {/* Password */}
+      <div>
+        <input
+          type='password'
+          placeholder='Пароль'
+          {...register('password')}
+          className='border p-2 w-full rounded'
+        />
+        {errors.password && (
+          <p className='text-red-600 text-sm mt-1'>{errors.password.message}</p>
+        )}
+      </div>
+
+      {/* Submit */}
       <button
         type='submit'
-        className='bg-blue-600 text-white px-4 py-2 rounded'>
-        Войти
+        disabled={isSubmitting}
+        className='bg-blue-600 text-white px-4 py-2 rounded w-full disabled:opacity-50'>
+        {isSubmitting ? 'Вход...' : 'Войти'}
       </button>
     </form>
   );

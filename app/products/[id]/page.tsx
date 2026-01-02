@@ -6,7 +6,8 @@ interface Props {
 }
 
 export default async function ProductPage({ params }: Props) {
-  const productId = Number(params.id);
+  const { id } = params;
+  const productId = Number(id);
 
   let product = null;
   try {
@@ -25,7 +26,15 @@ export default async function ProductPage({ params }: Props) {
   }
 
   // Обработчик сохранения (через API)
-  async function handleProductSubmit({ name, imageUrl, categoryId }: { name: string; imageUrl: string; categoryId: number }) {
+  async function handleProductSubmit({
+    name,
+    imageUrl,
+    categoryId,
+  }: {
+    name: string;
+    imageUrl: string;
+    categoryId: number;
+  }) {
     'use server'; // Next.js 15 server action
     try {
       await prisma.product.update({

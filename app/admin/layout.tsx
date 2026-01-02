@@ -1,9 +1,12 @@
 'use client';
 
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/lib/utils';
 import { useAuth } from '@/shared/hooks/use-auth';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { silentRefresh } from '@/shared/lib/refresh';
+import React from 'react';
+import { logout } from '@/shared/lib/logout';
 
 export default function AdminLayout({
   children,
@@ -13,6 +16,19 @@ export default function AdminLayout({
   const { loading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+
+  //  Silent refresh каждые 10 минут
+  React.useEffect(() => {
+    // Первый вызов сразу при загрузке
+    silentRefresh();
+
+    // Затем каждые 10 минут
+    const interval = setInterval(() => {
+      silentRefresh();
+    }, 1000 * 60 * 10);
+
+    return () => clearInterval(interval);
+  }, []);
 
   if (loading) {
     return <div className='p-8'>Проверка авторизации...</div>;
@@ -72,11 +88,11 @@ export default function AdminLayout({
         <header className='flex justify-between items-center mb-6'>
           <h1 className='text-lg font-semibold'>Админка</h1>
           <button
-            onClick={() => {
-              document.cookie = 'token=; Max-Age=0; path=/'; // очистка токена
+            onClick={async () => {
+              await logout();
               router.push('/login');
             }}
-            className='bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700'>
+            className='text-red-600 border border-red-600 px-3 py-1 rounded hover:bg-red-600 hover:text-white transition duration-300 cursor-pointer'>
             Выйти
           </button>
         </header>

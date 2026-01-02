@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button, Label } from '../ui';
 import { Input } from '../ui/input';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/lib/utils';
 
 interface ProductFormData {
   name: string;

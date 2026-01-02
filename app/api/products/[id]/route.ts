@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/prisma/prisma-client';
 
-interface Params {
-  params: { id: string };
-}
-
-// GET /api/products/[id]
-export async function GET(_: Request, { params }: Params) {
+export async function GET(_: Request, { params }: { params: { id: string } }) {
   const product = await prisma.product.findUnique({
     where: { id: Number(params.id) },
     include: { category: true },
@@ -14,8 +9,10 @@ export async function GET(_: Request, { params }: Params) {
   return NextResponse.json(product);
 }
 
-// PUT /api/products/[id]
-export async function PUT(req: Request, { params }: Params) {
+export async function PUT(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
   const body = await req.json();
   const product = await prisma.product.update({
     where: { id: Number(params.id) },
@@ -24,8 +21,10 @@ export async function PUT(req: Request, { params }: Params) {
   return NextResponse.json(product);
 }
 
-// DELETE /api/products/[id]
-export async function DELETE(_: Request, { params }: Params) {
+export async function DELETE(
+  _: Request,
+  { params }: { params: { id: string } }
+) {
   await prisma.product.delete({ where: { id: Number(params.id) } });
   return NextResponse.json({ success: true });
 }

@@ -1,7 +1,22 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  productionBrowserSourceMaps: false,
+
+  typedRoutes: false,
+
+  experimental: {
+    ppr: false, // ← ключевой фикс
+    cacheComponents: false,
+  },
+
+  logging: {
+    fetches: {
+      fullUrl: false,
+    },
+  },
+
+  turbopack: {},
 };
 
 export default nextConfig;

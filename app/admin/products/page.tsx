@@ -3,8 +3,16 @@
 import { ProductTable } from '@/shared/components';
 import { useEffect, useState } from 'react';
 
+interface Props {
+  id: string;
+  name: string;
+  imageUrl: string;
+  categoryId: number;
+  status: 'active' | 'archived';
+}
+
 export default function AdminProductsPage() {
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<Props[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -17,7 +25,7 @@ export default function AdminProductsPage() {
 
   return (
     <div>
-      <h1 className='text-xl font-bold mb-4'>Products</h1>
+      <h1 className='text-xl font-bold mb-4'>Продукция</h1>
       <ProductTable products={products} />
     </div>
   );

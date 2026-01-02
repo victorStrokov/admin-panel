@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '../ui';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/lib/utils';
 
 export type Product = {
   id: string;

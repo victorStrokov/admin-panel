@@ -20,17 +20,61 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Learn More
+🚀 Запуск проекта
 
-To learn more about Next.js, take a look at the following resources:
+# Установка зависимостей
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+npm install
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Запуск в режиме разработки (с Turbopack)
 
-## Deploy on Vercel
+npm run dev
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Сборка для продакшена
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+npm run build
+
+# Запуск собранного проекта
+
+npm run start
+
+# Линтинг кода
+
+npm run lint
+
+🗄️ Работа с Prisma
+
+# Генерация Prisma Client (после изменения schema.prisma)
+
+npm run prisma:generate
+
+# Создание и применение миграции
+
+npm run prisma:migrate
+
+# Просмотр базы через Prisma Studio
+
+npm run pr
+
+⚙️ Настройка окружения (.env)
+
+# Database
+
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=require
+
+# Node.js окружение
+
+NODE_ENV=development
+
+# JWT
+
+JWT_SECRET=your-jwt-secret-key
+
+# Next.js API
+
+NEXT_PUBLIC_API_URL=/api
+
+# NextAuth
+
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your-nextauth-secret

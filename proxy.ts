@@ -1,29 +1,55 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import jwt from 'jsonwebtoken';
+import { verifyAccessToken } from '@/shared/lib/auth-tokens';
+import { prisma } from '@/prisma/prisma-client';
+import { JwtPayload } from 'jsonwebtoken';
 
-export function proxy(req: NextRequest) {
-  // Проверяем только админские маршруты
-  if (req.nextUrl.pathname.startsWith('/admin')) {
+export const config = {
+  matcher: ['/admin/:path*'],
+};
+
+export default async function proxy(req: NextRequest) {
+  try {
     const token =
       req.cookies.get('token')?.value ||
-      req.headers.get('authorization')?.replace('Bearer ', '');
+      req.headers.get('authorization')?.replace('Bearer ', '') ||
+      '';
 
     if (!token) {
       return NextResponse.redirect(new URL('/login', req.url));
     }
 
+    let payload: JwtPayload & { userId: number; email: string };
+
     try {
-      jwt.verify(token, process.env.JWT_SECRET as string);
-      return NextResponse.next();
+      payload = verifyAccessToken(token) as JwtPayload & {
+        userId: number;
+        email: string;
+      };
     } catch {
       return NextResponse.redirect(new URL('/login', req.url));
     }
+
+    if (!payload?.userId) {
+      return NextResponse.redirect(new URL('/login', req.url));
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, email: true, fullName: true, role: true },
+    });
+
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', req.url));
+    }
+
+    if (user.role !== 'ADMIN') {
+      return NextResponse.redirect(new URL('/', req.url));
+    }
+
+    return NextResponse.next();
+  } catch (error) {
+    console.error('[PROXY] Ошибка:', error);
+    return NextResponse.redirect(new URL('/login', req.url));
   }
-
-  return NextResponse.next();
 }
-
-export const config = {
-  matcher: ['/admin/:path*'], // защита всех страниц админки
-};
