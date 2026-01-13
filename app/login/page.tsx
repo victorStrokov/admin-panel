@@ -26,6 +26,7 @@ export default function LoginPage() {
 
     const res = await fetch('/api/auth/login', {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         'x-device-id': deviceId,

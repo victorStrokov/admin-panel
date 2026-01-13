@@ -1,4 +1,5 @@
 import { prisma } from '@/prisma/prisma-client';
+import { Prisma } from '@prisma/client';
 import { ProductForm } from '@/shared/components/shared/product-form';
 
 export default function CreateProductPage() {
@@ -13,7 +14,7 @@ export default function CreateProductPage() {
         name: data.name,
         imageUrl: data.imageUrl,
         categoryId: data.categoryId,
-      },
+      } as Prisma.ProductUncheckedCreateInput,
     });
     console.log('Товар успешно создан');
   }

@@ -1,37 +1,42 @@
 import { notFound } from 'next/navigation';
-import { headers } from 'next/headers';
+import { headers, cookies } from 'next/headers';
 import { UserAvatar, UserProviderBadge } from '@/shared/components';
 import { ActivityLogRow } from '@/shared/types/activity-log';
 import { DeviceSession } from '@/shared/types/device-session';
 import { UserDevicesTable } from '@/shared/components/shared/users';
 
-export default async function UserProfilePage({
-  params,
-}: {
-  params: { id: string };
+export default async function UserProfilePage(props: {
+  params: Promise<{ id: string }>;
 }) {
+  const params = await props.params;
   const { id } = params;
 
   const h = await headers();
   const host = h.get('host');
+  const cookieStore = await cookies();
+  const token = cookieStore.get('token')?.value;
 
   const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https';
   const baseUrl = `${protocol}://${host}`;
 
   const res = await fetch(`${baseUrl}/api/users/${id}`, {
     cache: 'no-store',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
 
   if (!res.ok) return notFound();
 
-  const user = await res.json();
+  const data = await res.json();
+  const user = data.user;
   const activityRes = await fetch(`${baseUrl}/api/users/${id}/activity`, {
     cache: 'no-store',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
 
   const activity: ActivityLogRow[] = await activityRes.json();
   const devicesRes = await fetch(`${baseUrl}/api/users/${id}/devices`, {
     cache: 'no-store',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
 
   const devices: DeviceSession[] = await devicesRes.json();

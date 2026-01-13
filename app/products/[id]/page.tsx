@@ -2,10 +2,11 @@ import { prisma } from '@/prisma/prisma-client';
 import { ProductForm } from '@/shared/components/shared/product-form';
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default async function ProductPage({ params }: Props) {
+export default async function ProductPage(props: Props) {
+  const params = await props.params;
   const { id } = params;
   const productId = Number(id);
 

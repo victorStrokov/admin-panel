@@ -1,26 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/prisma/prisma-client';
-import { verifyAccessToken } from '@/shared/lib/auth-tokens';
+import { getUserFromRequest } from '@/shared/lib/get-user';
+import { logActivity } from '@/shared/lib/log-activity';
 
-export async function POST(req: NextRequest) {
+export async function DELETE(req: NextRequest) {
   try {
-    const token = req.cookies.get('token')?.value;
-    if (!token)
+    const user = await getUserFromRequest(req);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const payload = verifyAccessToken(token);
-    if (!payload)
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const { sessionId } = await req.json();
+    if (!sessionId) {
+      return NextResponse.json(
+        { error: 'sessionId required' },
+        { status: 400 }
+      );
+    }
 
-    await prisma.session.delete({
-      where: { id: sessionId },
+    const deleted = await prisma.session.deleteMany({
+      where: {
+        id: sessionId,
+        userId: user.id,
+      },
     });
 
+    if (deleted.count === 0) {
+      return NextResponse.json({ error: 'Сессия не найдена' }, { status: 404 });
+    }
+
+    // Логируем удаление конкретной сессии
+    await logActivity(user.id, 'delete_session', req);
+
     return NextResponse.json({ success: true });
-  } catch (e) {
-    console.error('[SESSION_DELETE]', e);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  } catch (error) {
+    console.error('[SESSION_DELETE]', error);
+    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
   }
 }

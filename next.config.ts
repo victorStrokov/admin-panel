@@ -1,14 +1,17 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  reactStrictMode: false,
+
   productionBrowserSourceMaps: false,
 
   typedRoutes: false,
 
   experimental: {
-    ppr: false, // ← ключевой фикс
-    cacheComponents: false,
+    ppr: false,
   },
+
+  cacheComponents: false,
 
   logging: {
     fetches: {

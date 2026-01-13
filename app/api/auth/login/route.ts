@@ -9,26 +9,23 @@ import {
 import { loginSchema } from '@/shared/lib/validation/auth';
 import { limiter } from '@/shared/lib/rate-limit';
 import { logActivity } from '@/shared/lib/log-activity';
-/**
- *  login пользователя
- * @param req
- * @returns
- */
+
 export async function POST(req: NextRequest) {
   try {
+    const forwarded = req.headers.get('x-forwarded-for');
     const ip =
-      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+      forwarded?.split(',')[0].trim() ||
+      req.headers.get('x-real-ip') ||
+      req.headers.get('cf-connecting-ip') || // Cloudflare
+      req.headers.get('x-client-ip') || // некоторые прокси
+      'unknown';
 
     const { success } = await limiter.limit(ip);
-
     if (!success) {
-      return NextResponse.json(
-        { error: 'Слишком много запросов' },
-        { status: 429 }
-      );
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
     }
-    const body = await req.json();
 
+    const body = await req.json();
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -39,31 +36,19 @@ export async function POST(req: NextRequest) {
 
     const { email, password, deviceId } = parsed.data;
 
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
-
+    const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !user.passwordHash) {
-      return NextResponse.json(
-        { error: 'Неверный email или пароль' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const isValid = await bcrypt.compare(password, user.passwordHash);
     if (!isValid) {
-      return NextResponse.json(
-        { error: 'Неверный email или пароль' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const accessToken = signAccessToken({
-      userId: user.id,
-      email: user.email,
-    });
-
+    const accessToken = signAccessToken({ userId: user.id, email: user.email });
     const refreshToken = generateRefreshToken();
+
     await createSession({ userId: user.id, refreshToken, deviceId, req });
 
     const res = NextResponse.json({
@@ -73,10 +58,11 @@ export async function POST(req: NextRequest) {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
+        tenantId: user.tenantId,
       },
     });
 
-    await logActivity(user.id, 'login', req);
+    await logActivity(user.id, 'login_user', req);
 
     res.cookies.set('token', accessToken, {
       httpOnly: true,
@@ -93,24 +79,18 @@ export async function POST(req: NextRequest) {
       path: '/',
       maxAge: 60 * 60 * 24 * 7,
     });
-    // Добавляем deviceId cookie
+
     res.cookies.set('deviceId', deviceId, {
       httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.SITE_URL?.startsWith('https://'),
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 24 * 7,
     });
 
-    console.info(
-      `[LOGIN] user=${user.id} ip=${ip} ua=${req.headers.get(
-        'user-agent'
-      )} deviceId=${deviceId}`
-    );
-
     return res;
   } catch (error) {
-    console.error('[LOGIN_POST]', error);
-    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
+    console.error('[AUTH_LOGIN]', error);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }

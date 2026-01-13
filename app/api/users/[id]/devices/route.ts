@@ -1,21 +1,55 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/prisma/prisma-client';
+import { getUserFromRequest } from '@/shared/lib/get-user';
+import { logActivity } from '@/shared/lib/log-activity';
 
-export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
-  const userId = Number(params.id);
+export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> | { id: string } }) {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user || user.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
-  if (Number.isNaN(userId)) {
-    return NextResponse.json({ error: 'Invalid user id' }, { status: 400 });
+    const p = await context.params;
+    const id = Number(p.id);
+    if (!id)
+      return NextResponse.json(
+        { error: 'Некорректный user id' },
+        { status: 400 }
+      );
+
+    // Проверяем, что целевой пользователь принадлежит текущему tenant
+    const targetUser = await prisma.user.findFirst({
+      where: { id, tenantId: user.tenantId },
+      select: { id: true },
+    });
+
+    if (!targetUser) {
+      return NextResponse.json(
+        { error: 'Пользователь не найден' },
+        { status: 404 }
+      );
+    }
+
+    const sessions = await prisma.session.findMany({
+      where: { userId: id },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        ip: true,
+        userAgent: true,
+        createdAt: true,
+        updatedAt: true,
+        deviceId: true,
+      },
+    });
+
+    // Логируем просмотр устройств
+    await logActivity(user.id, 'view_user_devices', req);
+
+    return NextResponse.json(sessions);
+  } catch (error) {
+    console.error('[USER_DEVICES_GET]', error);
+    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
   }
-
-  const sessions = await prisma.session.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    // сюда можно добавить select, если не нужны все поля
-  });
-
-  return NextResponse.json(sessions);
 }

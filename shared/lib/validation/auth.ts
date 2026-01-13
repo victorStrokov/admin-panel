@@ -23,7 +23,7 @@ export const registerSchema = z.object({
     .trim()
     .pipe(z.email({ message: 'Некорректный email' })),
 
-  password: z.string().trim().min(8, { message: 'Минимум 8 символов' }),
+  password: z.string().trim().min(3, { message: 'Минимум 3 символа' }),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

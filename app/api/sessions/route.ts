@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/prisma/prisma-client';
-import { verifyAccessToken } from '@/shared/lib/auth-tokens';
+import { getUserFromRequest } from '@/shared/lib/get-user';
+import { logActivity } from '@/shared/lib/log-activity';
 
 export async function GET(req: NextRequest) {
   try {
-    const token = req.cookies.get('token')?.value;
-    if (!token)
+    const user = await getUserFromRequest(req);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const payload = verifyAccessToken(token);
-    if (!payload)
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const sessions = await prisma.session.findMany({
-      where: { userId: payload.userId },
+      where: { userId: user.id },
       orderBy: { updatedAt: 'desc' },
       select: {
         id: true,
@@ -25,9 +23,12 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    // Логируем просмотр списка сессий
+    await logActivity(user.id, 'view_sessions', req);
+
     return NextResponse.json({ sessions });
-  } catch (e) {
-    console.error('[SESSIONS_GET]', e);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  } catch (error) {
+    console.error('[SESSIONS_GET]', error);
+    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
   }
 }

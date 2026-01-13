@@ -5,7 +5,7 @@ import { prisma } from '@/prisma/prisma-client';
 import { JwtPayload } from 'jsonwebtoken';
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ['/admin/:path*', '/api/admin/:path*'],
 };
 
 export default async function proxy(req: NextRequest) {

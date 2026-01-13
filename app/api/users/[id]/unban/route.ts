@@ -1,27 +1,38 @@
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/prisma/prisma-client';
+import { getUserFromRequest } from '@/shared/lib/get-user';
 import { logActivity } from '@/shared/lib/log-activity';
-import { NextResponse } from 'next/server';
 
-export async function POST(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> | { id: string } }) {
   try {
-    const userId = Number(params.id);
+    const user = await getUserFromRequest(req);
+    if (!user || user.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
-    // 1. Снимаем бан
-    await prisma.user.update({
-      where: { id: userId },
+    const p = await context.params;
+    const id = Number(p.id);
+    if (!id)
+      return NextResponse.json({ error: 'Некорректный id' }, { status: 400 });
+
+    const updated = await prisma.user.updateMany({
+      where: { id, tenantId: user.tenantId },
       data: { banned: false },
     });
 
-    // 2. Логируем действие
-    await logActivity(userId, 'unban', req);
+    if (updated.count === 0) {
+      return NextResponse.json(
+        { error: 'Пользователь не найден' },
+        { status: 404 }
+      );
+    }
 
-    // 3. Возвращаем ответ
+    // Логируем действие администратора
+    await logActivity(user.id, 'unban_user', req);
+
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('[UNBAN_ERROR]', error);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    console.error('[USER_UNBAN]', error);
+    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
   }
 }

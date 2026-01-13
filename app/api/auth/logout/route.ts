@@ -1,61 +1,55 @@
-import { NextResponse, NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/prisma/prisma-client';
 import { deleteSessionByRefreshToken } from '@/shared/lib/auth-tokens';
+import { getUserFromRequest } from '@/shared/lib/get-user';
 import { logActivity } from '@/shared/lib/log-activity';
 
-export async function POST(req: NextRequest) {
+export async function DELETE(req: NextRequest) {
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const refreshToken =
       req.cookies.get('refreshToken')?.value ||
       req.headers.get('x-refresh-token') ||
       '';
-
     const deviceId =
       req.cookies.get('deviceId')?.value ||
       req.headers.get('x-device-id') ||
       '';
 
-    // 1. Определяем пользователя по refreshToken
-    let user: { id: number } | null = null;
-
-    if (refreshToken) {
-      const session = await prisma.session.findUnique({
-        where: { refreshToken },
-        select: { userId: true },
-      });
-
-      if (session) {
-        user = { id: session.userId };
-      }
-    }
-
-    // 2. Логируем logout
-    if (user) {
-      await logActivity(user.id, 'logout', req);
-    }
-
-    // 3. Удаляем сессию по refreshToken
+    // Удаляем сессию по refreshToken
     if (refreshToken) {
       try {
         await deleteSessionByRefreshToken(refreshToken);
-      } catch {}
+      } catch (err) {
+        console.warn('[LOGOUT] Ошибка удаления по refreshToken', err);
+      }
     }
 
-    // 4. Удаляем сессию по deviceId
+    // Удаляем сессию по deviceId
     if (deviceId) {
       try {
         await prisma.session.deleteMany({
-          where: { deviceId },
+          where: { userId: user.id, deviceId },
         });
-      } catch {}
+      } catch (err) {
+        console.warn('[LOGOUT] Ошибка удаления по deviceId', err);
+      }
     }
 
-    // 5. Очищаем cookie
+    // Логируем действие
+    await logActivity(user.id, 'logout_user', req);
+
+    // Очищаем cookie
     const res = NextResponse.json({ success: true });
+    const isSecure = process.env.SITE_URL?.startsWith('https://') ?? false;
 
     res.cookies.set('token', '', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isSecure,
       sameSite: 'lax',
       path: '/',
       maxAge: 0,
@@ -64,7 +58,7 @@ export async function POST(req: NextRequest) {
 
     res.cookies.set('refreshToken', '', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isSecure,
       sameSite: 'strict',
       path: '/',
       maxAge: 0,
@@ -73,18 +67,16 @@ export async function POST(req: NextRequest) {
 
     res.cookies.set('deviceId', '', {
       httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isSecure,
       sameSite: 'lax',
       path: '/',
       maxAge: 0,
       expires: new Date(0),
     });
 
-    console.info(`[LOGOUT] deviceId=${deviceId} refreshToken=${refreshToken}`);
-
     return res;
   } catch (error) {
-    console.error('[LOGOUT_POST] Ошибка:', error);
+    console.error('[AUTH_LOGOUT]', error);
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
   }
 }

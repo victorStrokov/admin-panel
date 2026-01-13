@@ -9,3 +9,4 @@ export { UserAvatar } from './user-avatar';
 export { UserProviderBadge } from './user-provider-badge';
 export { UsersDateFilter } from './users-date-filter';
 export { ExportCsvButton } from './export-csv-button';
+export { SidebarLink } from './SidebarLink';

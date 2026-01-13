@@ -6,27 +6,37 @@ datasource db {
   provider = "postgresql"
 }
 
+model Tenant {
+  id        Int       @id @default(autoincrement())
+  name      String
+  createdAt DateTime  @default(now())
+  users     User[]
+  products  Product[]
+  orders    Order[]
+}
+
 model User {
-  id               Int               @id @default(autoincrement())
-  fullName         String            @db.VarChar(150)
-  email            String            @unique @db.VarChar(255)
-  passwordHash     String?           @db.VarChar(100)
-  role             UserRole          @default(USER)
-  verified         DateTime?
-  provider         String?
-  providerId       String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  cart             Cart?
-  orders           Order[]
-  verificationCode VerificationCode?
-  mustChangePassword Boolean  @default(false)
-  sessions     Session[]
-  activityLogs ActivityLog[]
-  banned           Boolean           @default(false) 
+  id                 Int               @id @default(autoincrement())
+  fullName           String            @db.VarChar(150)
+  email              String            @unique @db.VarChar(255)
+  passwordHash       String?           @db.VarChar(100)
+  role               UserRole          @default(USER)
+  tenantId           Int
+  tenant             Tenant            @relation(fields: [tenantId], references: [id])
+  verified           DateTime?
+  provider           String?
+  providerId         String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  cart               Cart?
+  orders             Order[]
+  verificationCode   VerificationCode?
+  mustChangePassword Boolean           @default(false)
+  sessions           Session[]
+  activityLogs       ActivityLog[]
+  banned             Boolean           @default(false)
 
-
-   @@index([email])
+  @@index([email])
 }
 
 model Session {
@@ -35,7 +45,7 @@ model Session {
   refreshToken String   @unique
   userAgent    String?
   ip           String?
-  deviceId     String? 
+  deviceId     String?
   expiresAt    DateTime
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -53,7 +63,6 @@ model ActivityLog {
   createdAt DateTime @default(now())
 }
 
-
 model Category {
   id        Int       @id @default(autoincrement())
   name      String    @unique
@@ -66,6 +75,8 @@ model Product {
   id          Int           @id @default(autoincrement())
   name        String
   imageUrl    String
+  tenantId    Int
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
   categoryId  Int
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -96,7 +107,6 @@ model ProductItem {
   @@index([productId])
 }
 
-
 model Ingredient {
   id        Int        @id @default(autoincrement())
   name      String
@@ -118,7 +128,7 @@ model Cart {
   user        User?      @relation(fields: [userId], references: [id])
   items       CartItem[]
 
-   @@index([userId])
+  @@index([userId])
 }
 
 model CartItem {
@@ -139,6 +149,8 @@ model CartItem {
 model Order {
   id          Int         @id @default(autoincrement())
   userId      Int?
+  tenantId    Int
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
   token       String
   totalAmount Int
   status      OrderStatus @default(PENDING)
@@ -156,6 +168,7 @@ model Order {
   @@index([userId])
   @@index([email])
   @@index([phone])
+  @@index([tenantId])
 }
 
 model VerificationCode {
@@ -165,6 +178,7 @@ model VerificationCode {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
   expiresAt DateTime
+
   @@unique([userId, code])
 }
 
