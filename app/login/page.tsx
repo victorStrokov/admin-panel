@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { getOrCreateDeviceId } from '@/shared/lib/device-id';
 import { useRouter } from 'next/navigation';
 import { loginFormSchema } from '@/shared/lib/validation/login-form-schema';
+import { triggerAuthRefresh } from '@/shared/lib/refresh-auth';
 import React from 'react';
 
 type LoginForm = z.infer<typeof loginFormSchema>;
@@ -35,11 +36,20 @@ export default function LoginPage() {
     });
 
     if (res.ok) {
+      const result = await res.json();
+      console.log('[Login] Success, user:', result.user?.id);
       toast.success('Вы успешно вошли в аккаунт', { icon: '✅' });
+      
+      // Уведомляем AuthContext о необходимости перезагрузить профиль
+      triggerAuthRefresh();
+      
+      // Даем время на загрузку профиля перед редиректом
       setTimeout(() => {
+        console.log('[Login] Redirecting to /admin');
         router.push('/admin');
-      }, 1000);
+      }, 200);
     } else {
+      console.error('[Login] Failed with status:', res.status);
       toast.error(
         'Не удалось войти в аккаунт, не правильный логин или пароль!',
         {

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/prisma/prisma-client';
 import { getUserFromRequest } from '@/shared/lib/get-user';
-import { logActivity } from '@/shared/lib/log-activity';
 
 export async function GET(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -28,9 +28,6 @@ export async function GET(req: NextRequest) {
         { status: 404 }
       );
     }
-
-    // Логируем просмотр профиля
-    await logActivity(user.id, 'view_me', req);
 
     return NextResponse.json({ user: me });
   } catch (error) {

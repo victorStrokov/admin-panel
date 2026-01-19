@@ -5,24 +5,36 @@ import { useAuth } from '@/shared/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import React from 'react';
 
-export default function AdminLayout({ children }) {
+interface AdminLayoutProps {
+  children: React.ReactNode;
+}
+
+export default function AdminLayout({ children }: AdminLayoutProps) {
   const { loading, user } = useAuth();
   const router = useRouter();
-  const [redirected, setRedirected] = React.useState(false);
+  const redirectedRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (!loading && user?.role !== 'ADMIN' && !redirected) {
-      setRedirected(true);
-      router.push('/');
-    }
-  }, [loading, user, router, redirected]);
+    // Если еще загружается, не делаем ничего
+    if (loading) return;
 
+    // Если пользователь не авторизован или не админ, редиректим
+    if (!user || user.role !== 'ADMIN') {
+      if (!redirectedRef.current) {
+        redirectedRef.current = true;
+        router.replace('/login');
+      }
+    }
+  }, [loading, user, router]);
+
+  // Пока загружается авторизация, показываем загрузку
   if (loading) {
-    return <div className='p-8'>Проверка авторизации...</div>;
+    return <div className='p-8 flex items-center justify-center min-h-screen'>Загрузка...</div>;
   }
 
-  if (user?.role !== 'ADMIN') {
-    return <div className='p-8'>Проверка доступа...</div>;
+  // Если пользователь не авторизован или не админ, показываем сообщение
+  if (!user || user.role !== 'ADMIN') {
+    return <div className='p-8 flex items-center justify-center min-h-screen'>Доступ запрещен</div>;
   }
 
   return (

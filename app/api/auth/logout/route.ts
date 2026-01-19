@@ -4,7 +4,7 @@ import { deleteSessionByRefreshToken } from '@/shared/lib/auth-tokens';
 import { getUserFromRequest } from '@/shared/lib/get-user';
 import { logActivity } from '@/shared/lib/log-activity';
 
-export async function DELETE(req: NextRequest) {
+async function handleLogout(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
     if (!user) {
@@ -79,4 +79,12 @@ export async function DELETE(req: NextRequest) {
     console.error('[AUTH_LOGOUT]', error);
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
   }
+}
+
+export async function POST(req: NextRequest) {
+  return handleLogout(req);
+}
+
+export async function DELETE(req: NextRequest) {
+  return handleLogout(req);
 }

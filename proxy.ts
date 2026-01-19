@@ -4,11 +4,42 @@ import { verifyAccessToken } from '@/shared/lib/auth-tokens';
 import { prisma } from '@/prisma/prisma-client';
 import { JwtPayload } from 'jsonwebtoken';
 
+// Разрешённые источники для CORS
+const ALLOWED_ORIGINS = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  process.env.NEXT_PUBLIC_SITE_URL || 'https://example.com',
+];
+
+function isOriginAllowed(origin: string | null): boolean {
+  if (!origin) return false;
+  return ALLOWED_ORIGINS.includes(origin);
+}
+
+function addCorsHeaders(
+  response: NextResponse,
+  origin: string | null,
+): NextResponse {
+  if (isOriginAllowed(origin) && origin) {
+    response.headers.set('Access-Control-Allow-Origin', origin);
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
+  }
+
+  // Заголовки безопасности
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+
+  return response;
+}
+
 export const config = {
   matcher: ['/admin/:path*', '/api/admin/:path*'],
 };
 
 export default async function proxy(req: NextRequest) {
+  const origin = req.headers.get('origin');
+
   try {
     const token =
       req.cookies.get('token')?.value ||
@@ -16,7 +47,8 @@ export default async function proxy(req: NextRequest) {
       '';
 
     if (!token) {
-      return NextResponse.redirect(new URL('/login', req.url));
+      const response = NextResponse.redirect(new URL('/login', req.url));
+      return addCorsHeaders(response, origin);
     }
 
     let payload: JwtPayload & { userId: number; email: string };
@@ -27,11 +59,13 @@ export default async function proxy(req: NextRequest) {
         email: string;
       };
     } catch {
-      return NextResponse.redirect(new URL('/login', req.url));
+      const response = NextResponse.redirect(new URL('/login', req.url));
+      return addCorsHeaders(response, origin);
     }
 
     if (!payload?.userId) {
-      return NextResponse.redirect(new URL('/login', req.url));
+      const response = NextResponse.redirect(new URL('/login', req.url));
+      return addCorsHeaders(response, origin);
     }
 
     const user = await prisma.user.findUnique({
@@ -40,16 +74,20 @@ export default async function proxy(req: NextRequest) {
     });
 
     if (!user) {
-      return NextResponse.redirect(new URL('/login', req.url));
+      const response = NextResponse.redirect(new URL('/login', req.url));
+      return addCorsHeaders(response, origin);
     }
 
     if (user.role !== 'ADMIN') {
-      return NextResponse.redirect(new URL('/', req.url));
+      const response = NextResponse.redirect(new URL('/', req.url));
+      return addCorsHeaders(response, origin);
     }
 
-    return NextResponse.next();
+    const response = NextResponse.next();
+    return addCorsHeaders(response, origin);
   } catch (error) {
     console.error('[PROXY] Ошибка:', error);
-    return NextResponse.redirect(new URL('/login', req.url));
+    const response = NextResponse.redirect(new URL('/login', req.url));
+    return addCorsHeaders(response, origin);
   }
 }
