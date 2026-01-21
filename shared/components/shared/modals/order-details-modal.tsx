@@ -8,9 +8,22 @@ interface Props {
   open: boolean;
   onClose: () => void;
 }
+type OrderIngredientDTO = {
+  id: number;
+  name: string;
+  price: number;
+};
+
+type OrderItemDTO = {
+  name: string;
+  price: number;
+  quantity: number;
+  ingredients?: OrderIngredientDTO[];
+};
 
 export function OrderDetailsModal({ order, open, onClose }: Props) {
   if (!order) return null;
+  const items = order.items as OrderItemDTO[];
 
   return (
     <Dialog
@@ -55,31 +68,30 @@ export function OrderDetailsModal({ order, open, onClose }: Props) {
           <div>
             <h3 className='font-semibold mb-2'>Товары</h3>
             <div className='space-y-2'>
-              {Array.isArray(order.items) &&
-                order.items.map((item: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className='border p-2 rounded'>
-                    <p>
-                      <strong>{item.name}</strong>
-                    </p>
-                    <p>Цена: {item.price} ₽</p>
-                    <p>Количество: {item.quantity}</p>
+              {items.map((item, idx) => (
+                <div
+                  key={idx}
+                  className='border p-2 rounded'>
+                  <p>
+                    <strong>{item.name}</strong>
+                  </p>
+                  <p>Цена: {item.price} ₽</p>
+                  <p>Количество: {item.quantity}</p>
 
-                    {item.ingredients?.length > 0 && (
-                      <div className='mt-1'>
-                        <p className='font-medium'>Ингредиенты:</p>
-                        <ul className='list-disc ml-5'>
-                          {item.ingredients.map((ing: any) => (
-                            <li key={ing.id}>
-                              {ing.name} — {ing.price} ₽
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  {item.ingredients && item.ingredients.length > 0 && (
+                    <div className='mt-1'>
+                      <p className='font-medium'>Ингредиенты:</p>
+                      <ul className='list-disc ml-5'>
+                        {item.ingredients.map((ing) => (
+                          <li key={ing.id}>
+                            {ing.name} — {ing.price} ₽
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
