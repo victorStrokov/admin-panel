@@ -19,8 +19,8 @@ export function useOrders() {
       const res = await fetch('/api/orders');
       if (!res.ok) throw new Error('Ошибка загрузки заказов');
 
-      const data: Order[] = await res.json();
-      setOrders(data);
+      const data = await res.json();
+      setOrders(data.orders || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Неизвестная ошибка');
     } finally {

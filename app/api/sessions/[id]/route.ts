@@ -5,8 +5,8 @@ import { getUserFromRequest } from '@/shared/lib/get-user';
 import { logActivity } from '@/shared/lib/log-activity';
 import { verifyCsrf } from '@/shared/lib/verify-csrf';
 
-export const DELETE = withTracing(async (req, ctx) => {
-  const { requestId, latency } = ctx;
+export const DELETE = withTracing<{ id: string }>(async (req, ctx) => {
+  const { requestId, params, latency } = ctx;
 
   const csrfError = verifyCsrf(req);
   if (csrfError) return csrfError;
@@ -19,29 +19,32 @@ export const DELETE = withTracing(async (req, ctx) => {
     );
   }
 
-  const currentDeviceId = req.headers.get('x-device-id');
-  if (!currentDeviceId) {
+  const sessionId = params.id;
+  if (!sessionId) {
     return NextResponse.json(
-      { error: 'Device ID required', requestId },
+      { error: 'sessionId required', requestId },
       { status: 400 },
     );
   }
 
   const deleted = await prisma.session.deleteMany({
     where: {
+      id: sessionId,
       userId: user.id,
-      deviceId: { not: currentDeviceId },
     },
   });
 
-  await logActivity(user.id, 'delete_other_sessions', req, {
-    deletedCount: deleted.count,
+  if (deleted.count === 0) {
+    return NextResponse.json(
+      { error: 'Сессия не найдена', requestId },
+      { status: 404 },
+    );
+  }
+
+  await logActivity(user.id, 'delete_session', req, {
+    sessionId,
     latencyMs: latency,
   });
 
-  return NextResponse.json({
-    success: true,
-    count: deleted.count,
-    requestId,
-  });
+  return NextResponse.json({ success: true, requestId });
 });

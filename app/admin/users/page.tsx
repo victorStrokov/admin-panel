@@ -15,6 +15,7 @@ import { useUsersStore } from '@/shared/store/users';
 import { useRouter } from 'next/navigation';
 import { useUsersQuery } from '@/shared/api/users/use-users-query';
 import { useUserMutations } from '@/shared/api/users/use-user-mutations';
+import { getCsrfToken } from '@/shared/lib/get-csrf-token';
 
 export default function UsersPage() {
   const router = useRouter();
@@ -149,6 +150,10 @@ export default function UsersPage() {
           if (deleteId === -1) {
             await fetch('/api/users/delete-many', {
               method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-csrf-token': getCsrfToken(),
+              },
               body: JSON.stringify({ ids: selected }),
             });
           } else if (deleteId !== null) {

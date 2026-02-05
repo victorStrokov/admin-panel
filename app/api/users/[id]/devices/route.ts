@@ -1,55 +1,54 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withTracing } from '@/shared/lib/with-tracing';
 import { prisma } from '@/prisma/prisma-client';
-import { getUserFromRequest } from '@/shared/lib/get-user';
+import { allow } from '@/shared/lib/rbac';
 import { logActivity } from '@/shared/lib/log-activity';
 
-export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> | { id: string } }) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+export const GET = withTracing<{ id: string }>(async (req, ctx) => {
+  const { requestId, params } = ctx;
 
-    const p = await context.params;
-    const id = Number(p.id);
-    if (!id)
-      return NextResponse.json(
-        { error: 'Некорректный user id' },
-        { status: 400 }
-      );
-
-    // Проверяем, что целевой пользователь принадлежит текущему tenant
-    const targetUser = await prisma.user.findFirst({
-      where: { id, tenantId: user.tenantId },
-      select: { id: true },
-    });
-
-    if (!targetUser) {
-      return NextResponse.json(
-        { error: 'Пользователь не найден' },
-        { status: 404 }
-      );
-    }
-
-    const sessions = await prisma.session.findMany({
-      where: { userId: id },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        ip: true,
-        userAgent: true,
-        createdAt: true,
-        updatedAt: true,
-        deviceId: true,
-      },
-    });
-
-    // Логируем просмотр устройств
-    await logActivity(user.id, 'view_user_devices', req);
-
-    return NextResponse.json(sessions);
-  } catch (error) {
-    console.error('[USER_DEVICES_GET]', error);
-    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
+  const admin = await allow.admin(req);
+  if (!admin) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
   }
-}
+
+  const id = Number(params.id);
+  if (!id) {
+    return NextResponse.json(
+      { error: 'Некорректный user id', requestId },
+      { status: 400 },
+    );
+  }
+
+  const targetUser = await prisma.user.findFirst({
+    where: { id, tenantId: admin.tenantId },
+    select: { id: true },
+  });
+
+  if (!targetUser) {
+    return NextResponse.json(
+      { error: 'Пользователь не найден', requestId },
+      { status: 404 },
+    );
+  }
+
+  const sessions = await prisma.session.findMany({
+    where: { userId: id },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      ip: true,
+      userAgent: true,
+      createdAt: true,
+      updatedAt: true,
+      deviceId: true,
+    },
+  });
+
+  await logActivity(admin.id, 'view_user_devices', req, { userId: id });
+
+  return NextResponse.json({ sessions, requestId });
+});

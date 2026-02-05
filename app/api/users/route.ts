@@ -1,13 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withTracing } from '@/shared/lib/with-tracing';
 import { prisma } from '@/prisma/prisma-client';
 import { Prisma, UserRole } from '@prisma/client';
-import { getUserFromRequest } from '@/shared/lib/get-user';
+import { allow } from '@/shared/lib/rbac';
+import { logger } from '@/shared/logger';
 
-export async function GET(req: NextRequest) {
+export const GET = withTracing(async (req, ctx) => {
+  const { requestId, latency } = ctx;
+
   try {
-    const user = await getUserFromRequest(req);
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const admin = await allow.admin(req);
+    if (!admin) {
+      return NextResponse.json(
+        { error: 'Forbidden', requestId },
+        { status: 403 },
+      );
     }
 
     const url = new URL(req.url);
@@ -24,16 +31,10 @@ export async function GET(req: NextRequest) {
     const dateFrom = url.searchParams.get('dateFrom') ?? '';
     const dateTo = url.searchParams.get('dateTo') ?? '';
 
-    // ============================
-    // 1. Безопасный sort
-    // ============================
     const allowedSortFields = ['id', 'email', 'createdAt', 'role'];
     const safeSort = allowedSortFields.includes(sort) ? sort : 'id';
 
-    // ============================
-    // 2. Формируем where
-    // ============================
-    const where: Prisma.UserWhereInput = { tenantId: user.tenantId };
+    const where: Prisma.UserWhereInput = { tenantId: admin.tenantId };
 
     if (role) where.role = role as UserRole;
     if (status === 'banned') where.banned = true;
@@ -52,14 +53,8 @@ export async function GET(req: NextRequest) {
       if (dateTo) where.createdAt.lte = new Date(dateTo);
     }
 
-    // ============================
-    // 3. Получаем total
-    // ============================
     const total = await prisma.user.count({ where });
 
-    // ============================
-    // 4. Получаем пользователей
-    // ============================
     const users = await prisma.user.findMany({
       where,
       orderBy: { [safeSort]: dir },
@@ -75,9 +70,26 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ users, total });
+    logger.info(
+      {
+        requestId,
+        latency,
+        adminId: admin.id,
+        count: users.length,
+      },
+      'Users list fetched',
+    );
+
+    return NextResponse.json({ users, total, requestId });
   } catch (error) {
-    console.error('[USERS_GET]', error);
-    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
+    logger.error(
+      { requestId, latency, error: String(error) },
+      'Users list failed',
+    );
+
+    return NextResponse.json(
+      { error: 'Ошибка сервера', requestId },
+      { status: 500 },
+    );
   }
-}
+});

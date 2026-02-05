@@ -1,55 +1,61 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withTracing } from '@/shared/lib/with-tracing';
 import { prisma } from '@/prisma/prisma-client';
-import { getUserFromRequest } from '@/shared/lib/get-user';
+import { allow } from '@/shared/lib/rbac';
 import { logActivity } from '@/shared/lib/log-activity';
+import { verifyCsrf } from '@/shared/lib/verify-csrf';
+import { limiter } from '@/shared/lib/rate-limit';
 
-export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> | { id: string } }) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+export const POST = withTracing<{ id: string }>(async (req, ctx) => {
+  const { requestId, params } = ctx;
 
-    const p = await context.params;
-    const id = Number(p.id);
-    if (!id)
-      return NextResponse.json(
-        { error: 'Некорректный user id' },
-        { status: 400 }
-      );
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    req.headers.get('x-real-ip') ||
+    req.headers.get('cf-connecting-ip') ||
+    req.headers.get('x-client-ip') ||
+    'unknown';
 
-    // Проверяем, что целевой пользователь принадлежит текущему tenant
-    const targetUser = await prisma.user.findFirst({
-      where: { id, tenantId: user.tenantId },
-      select: { id: true },
-    });
-
-    if (!targetUser) {
-      return NextResponse.json(
-        { error: 'Пользователь не найден' },
-        { status: 404 }
-      );
-    }
-
-    const logs = await prisma.activityLog.findMany({
-      where: { userId: id },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-      select: {
-        id: true,
-        action: true,
-        ip: true,
-        userAgent: true,
-        createdAt: true,
-      },
-    });
-
-    // Логируем просмотр активности
-    await logActivity(user.id, 'view_user_activity', req);
-
-    return NextResponse.json(logs);
-  } catch (error) {
-    console.error('[USER_ACTIVITY_GET]', error);
-    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
+  const { success } = await limiter.limit(ip);
+  if (!success) {
+    return NextResponse.json(
+      { error: 'Too many requests', requestId },
+      { status: 429 },
+    );
   }
-}
+
+  const csrfError = verifyCsrf(req);
+  if (csrfError) return csrfError;
+
+  const admin = await allow.admin(req);
+  if (!admin) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
+  }
+
+  const id = Number(params.id);
+  if (!id) {
+    return NextResponse.json(
+      { error: 'Некорректный id', requestId },
+      { status: 400 },
+    );
+  }
+
+  const updated = await prisma.user.updateMany({
+    where: { id, tenantId: admin.tenantId },
+    data: { banned: true },
+  });
+
+  if (updated.count === 0) {
+    return NextResponse.json(
+      { error: 'Пользователь не найден', requestId },
+      { status: 404 },
+    );
+  }
+
+  await logActivity(admin.id, 'ban_user', req, { userId: id });
+
+  return NextResponse.json({ success: true, requestId });
+});

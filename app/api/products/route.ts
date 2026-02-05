@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import { prisma } from '@/prisma/prisma-client';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withTracing } from '@/shared/lib/with-tracing';
 import { getUserFromRequest } from '@/shared/lib/get-user';
+import { allow } from '@/shared/lib/rbac';
 import { logActivity } from '@/shared/lib/log-activity';
+import { verifyCsrf } from '@/shared/lib/verify-csrf';
 
-// =========================
 // Валидация Product
-// =========================
 const productSchema = z.object({
   name: z.string().min(2, 'Название должно быть не короче 2 символов'),
   imageUrl: z.string().url('Некорректный URL изображения'),
@@ -14,146 +15,168 @@ const productSchema = z.object({
   categoryId: z.number(),
 });
 
-// =========================
-// GET /api/products
-// =========================
-export async function GET(req: NextRequest) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user)
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+// ---------------- GET /api/products ----------------
+// Доступно всем авторизованным пользователям
 
-    const products = await prisma.product.findMany({
-      where: { tenantId: user.tenantId },
-      include: { category: true, tenant: true },
-      orderBy: { createdAt: 'desc' },
-    });
+export const GET = withTracing(async (req, ctx) => {
+  const { requestId, latency } = ctx;
 
-    await logActivity(user.id, 'view_products', req);
-
-    return NextResponse.json(products);
-  } catch (error) {
-    console.error('[PRODUCTS_GET]', error);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Unauthorized', requestId },
+      { status: 401 },
+    );
   }
-}
 
-// =========================
-// POST /api/products
-// =========================
-export async function POST(req: NextRequest) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+  const products = await prisma.product.findMany({
+    where: { tenantId: user.tenantId },
+    include: { category: true, tenant: true },
+    orderBy: { createdAt: 'desc' },
+  });
 
-    const body = await req.json();
-    const parsed = productSchema.safeParse(body);
+  await logActivity(user.id, 'view_products', req, {
+    count: products.length,
+    latencyMs: latency,
+  });
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.format() },
-        { status: 400 }
-      );
-    }
+  return NextResponse.json({ products, requestId });
+});
 
-    const { categoryId, ...data } = parsed.data;
+// ---------------- POST /api/products ----------------
+// ADMIN или MANAGER
 
-    const product = await prisma.product.create({
-      data: {
-        ...data,
-        category: { connect: { id: categoryId } },
-        tenant: { connect: { id: user.tenantId } },
-      },
-      include: { category: true, tenant: true },
-    });
+export const POST = withTracing(async (req, ctx) => {
+  const { requestId, latency } = ctx;
 
-    await logActivity(user.id, 'create_product', req);
+  const csrfError = verifyCsrf(req);
+  if (csrfError) return csrfError;
 
-    return NextResponse.json(product);
-  } catch (error) {
-    console.error('[PRODUCTS_POST]', error);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  const staff = await allow.manageProducts(req);
+  if (!staff) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
   }
-}
 
-// =========================
-// PUT /api/products/:id
-// =========================
-// =========================
-// PUT /api/products/:id
-// =========================
-export async function PUT(req: NextRequest) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+  const body = await req.json();
+  const parsed = productSchema.safeParse(body);
 
-    const body = await req.json();
-    const parsed = productSchema.extend({ id: z.number() }).safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.format() },
-        { status: 400 }
-      );
-    }
-
-    const { id, categoryId, ...data } = parsed.data;
-
-    const product = await prisma.product.update({
-      where: { id, tenantId: user.tenantId },
-      data: {
-        ...data,
-        category: { connect: { id: categoryId } },
-      },
-      include: { category: true, tenant: true },
-    });
-
-    await logActivity(user.id, 'update_product', req);
-
-    return NextResponse.json(product);
-  } catch (error) {
-    console.error('[PRODUCTS_PUT]', error);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.format(), requestId },
+      { status: 400 },
+    );
   }
-}
 
-// =========================
-// DELETE /api/products/:id
-// =========================
-export async function DELETE(req: NextRequest) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+  const { categoryId, ...data } = parsed.data;
 
-    const { searchParams } = new URL(req.url);
-    const id = Number(searchParams.get('id'));
+  const product = await prisma.product.create({
+    data: {
+      ...data,
+      category: { connect: { id: categoryId } },
+      tenant: { connect: { id: staff.tenantId } },
+    },
+    include: { category: true, tenant: true },
+  });
 
-    if (!id) {
-      return NextResponse.json(
-        { error: 'Product ID required' },
-        { status: 400 }
-      );
-    }
+  await logActivity(staff.id, 'create_product', req, {
+    productId: product.id,
+    latencyMs: latency,
+  });
 
-    const deleted = await prisma.product.deleteMany({
-      where: { id, tenantId: user.tenantId },
-    });
+  return NextResponse.json({ product, requestId });
+});
 
-    if (deleted.count === 0) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
-    }
+// ---------------- PUT /api/products ----------------
+// Только ADMIN или MANAGER
 
-    await logActivity(user.id, 'delete_product', req);
+export const PUT = withTracing(async (req, ctx) => {
+  const { requestId, latency } = ctx;
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('[PRODUCTS_DELETE]', error);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  const csrfError = verifyCsrf(req);
+  if (csrfError) return csrfError;
+
+  const staff = await allow.manageProducts(req);
+  if (!staff) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
   }
-}
+
+  const body = await req.json();
+  const parsed = productSchema.extend({ id: z.number() }).safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.format(), requestId },
+      { status: 400 },
+    );
+  }
+
+  const { id, categoryId, ...data } = parsed.data;
+
+  const product = await prisma.product.update({
+    where: { id, tenantId: staff.tenantId },
+    data: {
+      ...data,
+      category: { connect: { id: categoryId } },
+    },
+    include: { category: true, tenant: true },
+  });
+
+  await logActivity(staff.id, 'update_product', req, {
+    productId: id,
+    latencyMs: latency,
+  });
+
+  return NextResponse.json({ product, requestId });
+});
+
+// ---------------- DELETE /api/products ----------------
+// Только ADMIN
+
+export const DELETE = withTracing(async (req, ctx) => {
+  const { requestId, latency } = ctx;
+
+  const csrfError = verifyCsrf(req);
+  if (csrfError) return csrfError;
+
+  const admin = await allow.admin(req);
+  if (!admin) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
+  }
+
+  const { searchParams } = new URL(req.url);
+  const id = Number(searchParams.get('id'));
+
+  if (!id) {
+    return NextResponse.json(
+      { error: 'Product ID required', requestId },
+      { status: 400 },
+    );
+  }
+
+  const deleted = await prisma.product.deleteMany({
+    where: { id, tenantId: admin.tenantId },
+  });
+
+  if (deleted.count === 0) {
+    return NextResponse.json(
+      { error: 'Product not found', requestId },
+      { status: 404 },
+    );
+  }
+
+  await logActivity(admin.id, 'delete_product', req, {
+    productId: id,
+    latencyMs: latency,
+  });
+
+  return NextResponse.json({ success: true, requestId });
+});

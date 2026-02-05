@@ -1,182 +1,166 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withTracing } from '@/shared/lib/with-tracing';
 import { prisma } from '@/prisma/prisma-client';
 import { z } from 'zod';
-import { getUserFromRequest } from '@/shared/lib/get-user';
+import { allow } from '@/shared/lib/rbac';
 import { logActivity } from '@/shared/lib/log-activity';
+import { verifyCsrf } from '@/shared/lib/verify-csrf';
 
-// Валидация для обновления пользователя
 const updateUserSchema = z.object({
   email: z.string().email().optional(),
   fullName: z.string().min(2).optional(),
   role: z.enum(['ADMIN', 'MANAGER', 'USER']).optional(),
 });
 
-// =========================
-// GET /api/users/[id]
-// =========================
-export async function GET(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
-) {
-  try {
-    const user = await getUserFromRequest(req);
-    console.log('[USERS_[ID]_GET] Current user:', user);
+export const GET = withTracing<{ id: string }>(async (req, ctx) => {
+  const { requestId, params } = ctx;
 
-    if (!user || user.role !== 'ADMIN') {
-      console.log(
-        '[USERS_[ID]_GET] Access denied. User:',
-        user,
-        'Role:',
-        user?.role
-      );
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const params = await context.params;
-    const userId = parseInt(params.id);
-
-    const targetUser = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        banned: true,
-        createdAt: true,
-        tenantId: true,
-      },
-    });
-
-    if (!targetUser) {
-      return NextResponse.json(
-        { error: 'Пользователь не найден' },
-        { status: 404 }
-      );
-    }
-
-    // Проверка, что пользователь из того же тенанта
-    if (targetUser.tenantId !== user.tenantId) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    // Логируем просмотр пользователя
-    await logActivity(user.id, 'view_user', req);
-
-    return NextResponse.json({ user: targetUser });
-  } catch (error) {
-    console.error('[USERS_[ID]_GET]', error);
-    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
+  const admin = await allow.admin(req);
+  if (!admin) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
   }
-}
 
-// =========================
-// PUT /api/users/[id]
-// =========================
-export async function PUT(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
-) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+  const userId = parseInt(params.id);
 
-    const params = await context.params;
-    const userId = parseInt(params.id);
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      role: true,
+      banned: true,
+      createdAt: true,
+      tenantId: true,
+    },
+  });
 
-    const body = await req.json();
-    const parsed = updateUserSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.format() },
-        { status: 400 }
-      );
-    }
-
-    const targetUser = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!targetUser) {
-      return NextResponse.json(
-        { error: 'Пользователь не найден' },
-        { status: 404 }
-      );
-    }
-
-    // Проверка, что пользователь из того же тенанта
-    if (targetUser.tenantId !== user.tenantId) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: parsed.data,
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        banned: true,
-        createdAt: true,
-      },
-    });
-
-    // Логируем обновление пользователя
-    await logActivity(user.id, 'update_user', req);
-
-    return NextResponse.json({ user: updatedUser });
-  } catch (error) {
-    console.error('[USERS_[ID]_PUT]', error);
-    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
+  if (!targetUser) {
+    return NextResponse.json(
+      { error: 'Пользователь не найден', requestId },
+      { status: 404 },
+    );
   }
-}
 
-// =========================
-// DELETE /api/users/[id]
-// =========================
-export async function DELETE(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
-) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const params = await context.params;
-    const userId = parseInt(params.id);
-
-    const targetUser = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!targetUser) {
-      return NextResponse.json(
-        { error: 'Пользователь не найден' },
-        { status: 404 }
-      );
-    }
-
-    // Проверка, что пользователь из того же тенанта
-    if (targetUser.tenantId !== user.tenantId) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    await prisma.user.delete({
-      where: { id: userId },
-    });
-
-    // Логируем удаление пользователя
-    await logActivity(user.id, 'delete_user', req);
-
-    return NextResponse.json({ message: 'Пользователь удалён' });
-  } catch (error) {
-    console.error('[USERS_[ID]_DELETE]', error);
-    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
+  if (targetUser.tenantId !== admin.tenantId) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
   }
-}
+
+  await logActivity(admin.id, 'view_user', req, { userId });
+
+  return NextResponse.json({ user: targetUser, requestId });
+});
+
+export const PUT = withTracing<{ id: string }>(async (req, ctx) => {
+  const { requestId, params } = ctx;
+
+  const csrfError = verifyCsrf(req);
+  if (csrfError) return csrfError;
+
+  const admin = await allow.admin(req);
+  if (!admin) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
+  }
+
+  const userId = parseInt(params.id);
+
+  const body = await req.json();
+  const parsed = updateUserSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.format(), requestId },
+      { status: 400 },
+    );
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!targetUser) {
+    return NextResponse.json(
+      { error: 'Пользователь не найден', requestId },
+      { status: 404 },
+    );
+  }
+
+  if (targetUser.tenantId !== admin.tenantId) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: parsed.data,
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      role: true,
+      banned: true,
+      createdAt: true,
+    },
+  });
+
+  await logActivity(admin.id, 'update_user', req, {
+    userId,
+    changes: parsed.data,
+  });
+
+  return NextResponse.json({ user: updatedUser, requestId });
+});
+
+export const DELETE = withTracing<{ id: string }>(async (req, ctx) => {
+  const { requestId, params } = ctx;
+
+  const csrfError = verifyCsrf(req);
+  if (csrfError) return csrfError;
+
+  const admin = await allow.admin(req);
+  if (!admin) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
+  }
+
+  const userId = parseInt(params.id);
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!targetUser) {
+    return NextResponse.json(
+      { error: 'Пользователь не найден', requestId },
+      { status: 404 },
+    );
+  }
+
+  if (targetUser.tenantId !== admin.tenantId) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
+  }
+
+  await prisma.user.delete({
+    where: { id: userId },
+  });
+
+  await logActivity(admin.id, 'delete_user', req, { userId });
+
+  return NextResponse.json({ message: 'Пользователь удалён', requestId });
+});

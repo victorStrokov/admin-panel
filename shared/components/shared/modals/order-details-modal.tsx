@@ -21,6 +21,15 @@ type OrderItemDTO = {
   ingredients?: OrderIngredientDTO[];
 };
 
+/**
+ * Модальное окно для просмотра деталей заказа.
+ *
+ * @param {Props} props - объект с параметрами.
+ * @param {Order | null} props.order - заказ, который будет отображаться в модальном окне.
+ * @param {boolean} props.open - флаг, указывающий, открыто ли модальное окно.
+ * @param {() => void} props.onClose - функция, вызываемая при закрытии модального окна.
+ */
+
 export function OrderDetailsModal({ order, open, onClose }: Props) {
   if (!order) return null;
   const items = order.items as OrderItemDTO[];
@@ -39,6 +48,7 @@ export function OrderDetailsModal({ order, open, onClose }: Props) {
             <p>
               <strong>Статус:</strong> {order.status}
             </p>
+
             <p>
               <strong>Сумма:</strong> {order.totalAmount} ₽
             </p>

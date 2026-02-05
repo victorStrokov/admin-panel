@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+   provider = "postgresql"
 }
 
 model Tenant {
@@ -54,13 +54,21 @@ model Session {
 }
 
 model ActivityLog {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  action    String
-  ip        String?
-  userAgent String?
-  createdAt DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  action     String
+  ip         String?
+  userAgent  String?
+
+  requestId  String?     
+  method     String?    
+  url        String?     
+  latencyMs  Float?      
+  meta       String?     
+
+  createdAt  DateTime @default(now())
 }
 
 model Category {

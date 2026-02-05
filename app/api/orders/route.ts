@@ -1,154 +1,230 @@
+import {  NextResponse } from 'next/server';
+import { withTracing } from '@/shared/lib/with-tracing';
 import { prisma } from '@/prisma/prisma-client';
-import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest } from '@/shared/lib/get-user';
+import { allow } from '@/shared/lib/rbac';
 import { logActivity } from '@/shared/lib/log-activity';
 import {
   orderCreateSchema,
   orderUpdateSchema,
 } from '@/shared/lib/validation/order.schema';
+import { verifyCsrf } from '@/shared/lib/verify-csrf';
+import { limiter } from '@/shared/lib/rate-limit';
 
-// =========================
-// GET /api/orders
-// =========================
-export async function GET(req: NextRequest) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+//  GET /api/orders 
+// Доступно всем авторизованным пользователям
 
-    const orders = await prisma.order.findMany({
-      where: { tenantId: user.tenantId },
-      include: { user: true, tenant: true },
-      orderBy: { createdAt: 'desc' },
-    });
+export const GET = withTracing(async (req, ctx) => {
+  const { requestId, latency } = ctx;
 
-    await logActivity(user.id, 'view_orders', req);
-
-    return NextResponse.json(orders);
-  } catch (error) {
-    console.error('[ORDERS_GET]', error);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Unauthorized', requestId },
+      { status: 401 },
+    );
   }
-}
 
-// =========================
-// POST /api/orders
-// =========================
-export async function POST(req: NextRequest) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  const orders = await prisma.order.findMany({
+    where: { tenantId: user.tenantId },
+    include: { user: true, tenant: true },
+    orderBy: { createdAt: 'desc' },
+  });
 
-    const body = await req.json();
-    const parsed = orderCreateSchema.safeParse(body);
+  await logActivity(user.id, 'view_orders', req, {
+    count: orders.length,
+    latencyMs: latency,
+  });
 
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
-    }
+  return NextResponse.json({ orders, requestId });
+});
 
-    const order = await prisma.order.create({
-      data: {
-        status: parsed.data.status,
-        totalAmount: parsed.data.totalAmount,
-        token: parsed.data.token,
-        items: parsed.data.items, // Json
-        fullName: parsed.data.fullName,
-        email: parsed.data.email,
-        phone: parsed.data.phone,
-        address: parsed.data.address,
-        comment: parsed.data.comment,
-        paymentId: parsed.data.paymentId,
-        userId: user.id,
-        tenantId: user.tenantId,
-      },
-    });
+// POST /api/orders 
+// Доступно всем авторизованным пользователям
 
-    await logActivity(user.id, 'create_order', req);
+export const POST = withTracing(async (req, ctx) => {
+  const { requestId, latency } = ctx;
 
-    return NextResponse.json(order);
-  } catch (error) {
-    console.error('[ORDERS_POST]', error);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    req.headers.get('x-real-ip') ||
+    req.headers.get('cf-connecting-ip') ||
+    req.headers.get('x-client-ip') ||
+    'unknown';
+
+  const { success } = await limiter.limit(ip);
+  if (!success) {
+    return NextResponse.json(
+      { error: 'Too many requests', requestId },
+      { status: 429 },
+    );
   }
-}
 
-// =========================
-// PUT /api/orders
-// =========================
-export async function PUT(req: NextRequest) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+  const csrfError = verifyCsrf(req);
+  if (csrfError) return csrfError;
 
-    const body = await req.json();
-    const parsed = orderUpdateSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
-    }
-
-    const { id, status, totalAmount } = parsed.data;
-
-    const existing = await prisma.order.findFirst({
-      where: { id, tenantId: user.tenantId },
-    });
-
-    if (!existing) {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-    }
-
-    const updatedOrder = await prisma.order.update({
-      where: { id },
-      data: { status, totalAmount },
-    });
-
-    await logActivity(user.id, 'update_order', req);
-
-    return NextResponse.json(updatedOrder);
-  } catch (error) {
-    console.error('[ORDERS_PUT]', error);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Unauthorized', requestId },
+      { status: 401 },
+    );
   }
-}
 
-// =========================
+  const body = await req.json();
+  const parsed = orderCreateSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues, requestId },
+      { status: 400 },
+    );
+  }
+
+  const order = await prisma.order.create({
+    data: {
+      ...parsed.data,
+      userId: user.id,
+      tenantId: user.tenantId,
+    },
+  });
+
+  await logActivity(user.id, 'create_order', req, {
+    orderId: order.id,
+    latencyMs: latency,
+  });
+
+  return NextResponse.json({ order, requestId });
+});
+
+// PUT /api/orders 
+// Только ADMIN или MANAGER
+
+export const PUT = withTracing(async (req, ctx) => {
+  const { requestId, latency } = ctx;
+
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    req.headers.get('x-real-ip') ||
+    req.headers.get('cf-connecting-ip') ||
+    req.headers.get('x-client-ip') ||
+    'unknown';
+
+  const { success } = await limiter.limit(ip);
+  if (!success) {
+    return NextResponse.json(
+      { error: 'Too many requests', requestId },
+      { status: 429 },
+    );
+  }
+
+  const csrfError = verifyCsrf(req);
+  if (csrfError) return csrfError;
+
+  const staff = await allow.staff(req);
+  if (!staff) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
+  }
+
+  const body = await req.json();
+  const parsed = orderUpdateSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues, requestId },
+      { status: 400 },
+    );
+  }
+
+  const { id, status, totalAmount } = parsed.data;
+
+  const existing = await prisma.order.findFirst({
+    where: { id, tenantId: staff.tenantId },
+  });
+
+  if (!existing) {
+    return NextResponse.json(
+      { error: 'Order not found', requestId },
+      { status: 404 },
+    );
+  }
+
+  const updatedOrder = await prisma.order.update({
+    where: { id },
+    data: { status, totalAmount },
+  });
+
+  await logActivity(staff.id, 'update_order', req, {
+    orderId: id,
+    latencyMs: latency,
+  });
+
+  return NextResponse.json({ order: updatedOrder, requestId });
+});
+
 // DELETE /api/orders?id=123
-// =========================
-export async function DELETE(req: NextRequest) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+// Только ADMIN
 
-    const { searchParams } = new URL(req.url);
-    const idParam = searchParams.get('id');
-    const id = idParam ? Number(idParam) : NaN;
+export const DELETE = withTracing(async (req, ctx) => {
+  const { requestId, latency } = ctx;
 
-    if (!id || Number.isNaN(id)) {
-      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
-    }
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    req.headers.get('x-real-ip') ||
+    req.headers.get('cf-connecting-ip') ||
+    req.headers.get('x-client-ip') ||
+    'unknown';
 
-    const existing = await prisma.order.findFirst({
-      where: { id, tenantId: user.tenantId },
-    });
-
-    if (!existing) {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-    }
-
-    await prisma.order.delete({ where: { id } });
-
-    await logActivity(user.id, 'delete_order', req);
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('[ORDERS_DELETE]', error);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  const { success } = await limiter.limit(ip);
+  if (!success) {
+    return NextResponse.json(
+      { error: 'Too many requests', requestId },
+      { status: 429 },
+    );
   }
-}
+
+  const csrfError = verifyCsrf(req);
+  if (csrfError) return csrfError;
+
+  const admin = await allow.admin(req);
+  if (!admin) {
+    return NextResponse.json(
+      { error: 'Forbidden', requestId },
+      { status: 403 },
+    );
+  }
+
+  const { searchParams } = new URL(req.url);
+  const idParam = searchParams.get('id');
+  const id = idParam ? Number(idParam) : NaN;
+
+  if (!id || Number.isNaN(id)) {
+    return NextResponse.json(
+      { error: 'Invalid id', requestId },
+      { status: 400 },
+    );
+  }
+
+  const existing = await prisma.order.findFirst({
+    where: { id, tenantId: admin.tenantId },
+  });
+
+  if (!existing) {
+    return NextResponse.json(
+      { error: 'Order not found', requestId },
+      { status: 404 },
+    );
+  }
+
+  await prisma.order.delete({ where: { id } });
+
+  await logActivity(admin.id, 'delete_order', req, {
+    orderId: id,
+    latencyMs: latency,
+  });
+
+  return NextResponse.json({ success: true, requestId });
+});

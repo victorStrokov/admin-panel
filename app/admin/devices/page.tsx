@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getOrCreateDeviceId } from '@/shared/lib/device-id';
+import { getCsrfToken } from '@/shared/lib/get-csrf-token';
 import { logoutAll } from '@/shared/lib/logout-all';
 import { deleteOthers } from '@/shared/lib/delete-others';
 import { useRouter } from 'next/navigation';
@@ -47,7 +48,7 @@ export default function DevicesPage() {
       data.sessions.map(async (s: SessionClient) => ({
         ...s,
         geo: await getGeo(s.ip),
-      }))
+      })),
     );
 
     setSessions(sessionsWithGeo);
@@ -56,8 +57,13 @@ export default function DevicesPage() {
   async function deleteSession(id: string) {
     await fetch('/api/sessions/delete', {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-csrf-token': getCsrfToken(),
+      },
       body: JSON.stringify({ sessionId: id }),
     });
+
     loadSessions();
   }
 

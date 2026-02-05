@@ -1,19 +1,13 @@
 import { prisma } from '@/prisma/prisma-client';
 
-export type ActivityAction =
-  | 'login'
-  | 'logout'
-  | 'refresh'
-  | 'ban'
-  | 'unban'
-  | 'delete_user'
-  | 'update_user';
-
 export async function logActivity(
   userId: number,
   action: string,
-  req?: Request
+  req?: Request,
+  meta?: Record<string, unknown>,
 ) {
+  const start = performance.now();
+
   try {
     const ip =
       req?.headers.get('x-forwarded-for') ||
@@ -21,6 +15,9 @@ export async function logActivity(
       null;
 
     const userAgent = req?.headers.get('user-agent') || null;
+    const requestId = req?.headers.get('x-request-id') || null;
+    const method = req?.method || null;
+    const url = req?.url || null;
 
     await prisma.activityLog.create({
       data: {
@@ -28,9 +25,19 @@ export async function logActivity(
         action,
         ip,
         userAgent,
+        requestId,
+        method,
+        url,
+        latencyMs: performance.now() - start,
+        meta: meta ? JSON.stringify(meta) : null,
       },
     });
   } catch (error) {
-    console.error('[ActivityLog] Error:', error);
+    console.error('[ActivityLog] Error:', {
+      error,
+      action,
+      userId,
+      requestId: req?.headers.get('x-request-id'),
+    });
   }
 }
