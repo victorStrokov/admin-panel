@@ -10,6 +10,7 @@ import { limiter } from '@/shared/lib/rate-limit';
 export const POST = withTracing(async (req, ctx) => {
   const { requestId, latency } = ctx;
 
+  // Rate limiting check
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     req.headers.get('x-real-ip') ||
@@ -36,7 +37,6 @@ export const POST = withTracing(async (req, ctx) => {
   }
 
   const { fullName, email, password } = parsed.data;
-
   const emailNormalized = email.toLowerCase();
 
   const exists = await prisma.user.findUnique({

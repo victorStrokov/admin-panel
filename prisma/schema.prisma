@@ -3,16 +3,18 @@ generator client {
 }
 
 datasource db {
-   provider = "postgresql"
+  provider = "postgresql"
 }
 
 model Tenant {
-  id        Int       @id @default(autoincrement())
-  name      String
-  createdAt DateTime  @default(now())
-  users     User[]
-  products  Product[]
-  orders    Order[]
+  id            Int            @id @default(autoincrement())
+  name          String
+  createdAt     DateTime       @default(now())
+  users         User[]
+  products      Product[]
+  orders        Order[]
+  inventory     Inventory[]
+  inventoryLogs InventoryLog[]
 }
 
 model User {
@@ -54,21 +56,21 @@ model Session {
 }
 
 model ActivityLog {
-  id         Int      @id @default(autoincrement())
-  userId     Int
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     Int  @id @default(autoincrement())
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  action     String
-  ip         String?
-  userAgent  String?
+  action    String
+  ip        String?
+  userAgent String?
 
-  requestId  String?     
-  method     String?    
-  url        String?     
-  latencyMs  Float?      
-  meta       String?     
+  requestId String?
+  method    String?
+  url       String?
+  latencyMs Float?
+  meta      String?
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model Category {
@@ -111,8 +113,41 @@ model ProductItem {
   steelSize        Int?
   cartItem         CartItem[]
   product          Product          @relation(fields: [productId], references: [id])
+  inventory        Inventory?
 
   @@index([productId])
+}
+
+model Inventory {
+  id            Int            @id @default(autoincrement())
+  productItemId Int            @unique
+  quantity      Int            @default(0)
+  tenantId      Int
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  productItem   ProductItem    @relation(fields: [productItemId], references: [id])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  logs          InventoryLog[]
+
+  @@index([tenantId])
+  @@index([productItemId])
+}
+
+model InventoryLog {
+  id            Int      @id @default(autoincrement())
+  inventoryId   Int
+  productItemId Int
+  tenantId      Int
+  userId        Int?
+  change        Int // +5, -3, +10, -1
+  oldQuantity   Int
+  newQuantity   Int
+  reason        String?
+  requestId     String?
+  createdAt     DateTime @default(now())
+
+  inventory Inventory @relation(fields: [inventoryId], references: [id])
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
 }
 
 model Ingredient {

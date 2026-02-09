@@ -1,4 +1,4 @@
-import {  NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { withTracing } from '@/shared/lib/with-tracing';
 import { prisma } from '@/prisma/prisma-client';
 import { getUserFromRequest } from '@/shared/lib/get-user';
@@ -10,8 +10,9 @@ import {
 } from '@/shared/lib/validation/order.schema';
 import { verifyCsrf } from '@/shared/lib/verify-csrf';
 import { limiter } from '@/shared/lib/rate-limit';
+import { logInventoryChange } from '@/shared/lib/log-inventory';
 
-//  GET /api/orders 
+//  GET /api/orders
 // Доступно всем авторизованным пользователям
 
 export const GET = withTracing(async (req, ctx) => {
@@ -39,7 +40,7 @@ export const GET = withTracing(async (req, ctx) => {
   return NextResponse.json({ orders, requestId });
 });
 
-// POST /api/orders 
+// POST /api/orders
 // Доступно всем авторизованным пользователям
 
 export const POST = withTracing(async (req, ctx) => {
@@ -81,6 +82,20 @@ export const POST = withTracing(async (req, ctx) => {
     );
   }
 
+  // 1) Проверяем остатки ДО создания заказа
+  for (const item of parsed.data.items) {
+    const inv = await prisma.inventory.findFirst({
+      where: { productItemId: item.productItemId, tenantId: user.tenantId },
+    });
+
+    if (!inv || inv.quantity < item.quantity) {
+      return NextResponse.json(
+        { error: `Not enough stock for item ${item.productItemId}`, requestId },
+        { status: 400 },
+      );
+    }
+  }
+
   const order = await prisma.order.create({
     data: {
       ...parsed.data,
@@ -88,6 +103,34 @@ export const POST = withTracing(async (req, ctx) => {
       tenantId: user.tenantId,
     },
   });
+
+  // 3) Списываем остатки + логируем изменения
+  for (const item of parsed.data.items) {
+    const inv = await prisma.inventory.findFirst({
+      where: { productItemId: item.productItemId, tenantId: user.tenantId },
+    });
+
+    if (!inv) continue;
+
+    const oldQuantity = inv.quantity;
+    const newQuantity = inv.quantity - item.quantity;
+
+    await prisma.inventory.update({
+      where: { productItemId: item.productItemId },
+      data: { quantity: { decrement: item.quantity } },
+    });
+
+    await logInventoryChange({
+      inventoryId: inv.id,
+      productItemId: inv.productItemId,
+      tenantId: user.tenantId,
+      userId: user.id,
+      oldQuantity,
+      newQuantity,
+      reason: 'order_created',
+      requestId,
+    });
+  }
 
   await logActivity(user.id, 'create_order', req, {
     orderId: order.id,
@@ -97,7 +140,7 @@ export const POST = withTracing(async (req, ctx) => {
   return NextResponse.json({ order, requestId });
 });
 
-// PUT /api/orders 
+// PUT /api/orders
 // Только ADMIN или MANAGER
 
 export const PUT = withTracing(async (req, ctx) => {
@@ -156,6 +199,42 @@ export const PUT = withTracing(async (req, ctx) => {
     where: { id },
     data: { status, totalAmount },
   });
+
+  if (status === 'CANCELLED') {
+    const items = Array.isArray(existing.items)
+      ? (existing.items as Array<{ productItemId: number; quantity: number }>)
+      : [];
+
+    for (const item of items) {
+      // 1) Получаем текущее состояние инвентаря
+      const inv = await prisma.inventory.findFirst({
+        where: { productItemId: item.productItemId, tenantId: staff.tenantId },
+      });
+
+      if (!inv) continue;
+
+      const oldQuantity = inv.quantity;
+      const newQuantity = inv.quantity + item.quantity;
+
+      // 2) Обновляем остаток
+      await prisma.inventory.update({
+        where: { productItemId: item.productItemId },
+        data: { quantity: { increment: item.quantity } },
+      });
+
+      // 3) Логируем изменение
+      await logInventoryChange({
+        inventoryId: inv.id,
+        productItemId: inv.productItemId,
+        tenantId: staff.tenantId,
+        userId: staff.id,
+        oldQuantity,
+        newQuantity,
+        reason: 'order_cancelled',
+        requestId,
+      });
+    }
+  }
 
   await logActivity(staff.id, 'update_order', req, {
     orderId: id,
@@ -220,6 +299,40 @@ export const DELETE = withTracing(async (req, ctx) => {
   }
 
   await prisma.order.delete({ where: { id } });
+
+  const items = Array.isArray(existing.items)
+    ? (existing.items as Array<{ productItemId: number; quantity: number }>)
+    : [];
+
+  for (const item of items) {
+    // 1) Получаем старое состояние инвентаря
+    const inv = await prisma.inventory.findFirst({
+      where: { productItemId: item.productItemId, tenantId: admin.tenantId },
+    });
+
+    if (!inv) continue;
+
+    const oldQuantity = inv.quantity;
+    const newQuantity = inv.quantity + item.quantity;
+
+    // 2) Обновляем остаток
+    await prisma.inventory.update({
+      where: { productItemId: item.productItemId },
+      data: { quantity: { increment: item.quantity } },
+    });
+
+    // 3) Логируем изменение
+    await logInventoryChange({
+      inventoryId: inv.id,
+      productItemId: inv.productItemId,
+      tenantId: admin.tenantId,
+      userId: admin.id,
+      oldQuantity,
+      newQuantity,
+      reason: 'order_deleted',
+      requestId,
+    });
+  }
 
   await logActivity(admin.id, 'delete_order', req, {
     orderId: id,

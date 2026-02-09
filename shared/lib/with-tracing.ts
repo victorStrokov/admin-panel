@@ -1,47 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export interface TraceContext<P = unknown> {
+export interface TraceContext<P> {
+  params: P;
   requestId: string;
   start: number;
   latency: number;
-  params: P;
 }
 
-export function withTracing<P = unknown>(
+export function withTracing<P>(
   handler: (req: NextRequest, ctx: TraceContext<P>) => Promise<NextResponse>,
 ) {
-  return async (req: NextRequest, context: { params: P }) => {
+  return async (req: NextRequest, ctx: { params: P }) => {
     const requestId = crypto.randomUUID();
     const start = performance.now();
 
-    const ctx: TraceContext<P> = {
+    const newCtx: TraceContext<P> = {
+      params: ctx.params,
       requestId,
       start,
       get latency() {
         return performance.now() - start;
       },
-      params: context.params,
     };
 
     try {
-      const res = await handler(req, ctx);
+      const res = await handler(req, newCtx);
 
-      if (res.headers.get('x-request-id') === null) {
+      if (!res.headers.get('x-request-id')) {
         res.headers.set('x-request-id', requestId);
       }
 
       return res;
     } catch (error) {
-      console.error('[withTracing] Unhandled error', {
-        requestId,
-        error,
-      });
+      console.error('[withTracing] Unhandled error', { requestId, error });
 
       return NextResponse.json(
-        {
-          error: 'Internal server error',
-          requestId,
-        },
+        { error: 'Internal server error', requestId },
         { status: 500 },
       );
     }
