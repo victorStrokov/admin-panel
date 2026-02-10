@@ -1,10 +1,22 @@
 import 'dotenv/config';
 import { hashSync } from 'bcrypt';
 import { prisma } from './prisma-client';
-import { categories, _ingredients, products } from './constants';
+import { _ingredients, products } from './constants';
 import { Prisma } from '@prisma/client';
 import { ProductMaterial } from '@/@types/product.types';
 import { calculatePrice } from '../shared/lib/calculate-price';
+import slugify from 'slugify';
+import { generateSku } from '@/shared/lib/generate-sku';
+
+const categories = [
+  { id: 1, name: 'Армирование' },
+  { id: 2, name: 'Алюминий' },
+  { id: 3, name: 'ПВХ' },
+  { id: 4, name: 'Уплотнение' },
+  { id: 5, name: 'Фурнитура' },
+  { id: 6, name: 'Комплектующие' },
+  { id: 7, name: 'Масла' },
+];
 
 const generateProductItem = ({
   productId,
@@ -31,10 +43,12 @@ const generateProductItem = ({
     productMaterials === 'STEEL'
       ? { steelSize }
       : productMaterials === 'PVC'
-      ? { pvcSize }
-      : { productSizes };
+        ? { pvcSize }
+        : { productSizes };
+
   return {
     productId,
+    sku: generateSku('ITEM'), // ← ДОБАВИЛИ SKU
     price: calculatePrice({
       ...sizeField,
       productLength,
@@ -248,7 +262,12 @@ async function main() {
   // 3. Categories
   // ============================
   await prisma.category.createMany({
-    data: categories,
+    data: categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      slug: slugify(c.name, { lower: true }),
+      tenantId: ldm.id,
+    })),
     skipDuplicates: true,
   });
 
@@ -276,6 +295,7 @@ async function main() {
     const productsWithTenant = products.map((p) => ({
       ...p,
       tenantId: ldm.id,
+      slug: slugify(p.name, { lower: true }),
     }));
     await prisma.product.createMany({
       data: productsWithTenant,
@@ -283,7 +303,7 @@ async function main() {
   } catch (error: unknown) {
     console.error(
       'Error creating products:',
-      error instanceof Error ? error.message : 'Unknown error'
+      error instanceof Error ? error.message : 'Unknown error',
     );
     console.error('Trying to create products one by one...');
     for (let i = 0; i < products.length; i++) {
@@ -293,6 +313,7 @@ async function main() {
           data: {
             ...p,
             tenantId: ldm.id,
+            slug: slugify(p.name, { lower: true }),
           } as Prisma.ProductUncheckedCreateInput,
         });
       } catch (e: unknown) {
@@ -308,6 +329,8 @@ async function main() {
   const profileSteel = await prisma.product.create({
     data: {
       name: 'REHAU 245536',
+      slug: slugify('REHAU 245536', { lower: true }),
+
       imageUrl: '/assets/OIG2.jpg',
       tenantId: ldm.id,
       categoryId: categorySteel.id,
@@ -319,6 +342,7 @@ async function main() {
   const profileSteel2 = await prisma.product.create({
     data: {
       name: 'Труба сварная',
+      slug: slugify('Труба сварная', { lower: true }),
       imageUrl: '/assets/OIG3.jpg',
       tenantId: ldm.id,
       categoryId: categorySteel.id,
@@ -330,7 +354,7 @@ async function main() {
   const profileSteel3 = await prisma.product.create({
     data: {
       name: 'Полоса оцинкованная',
-      imageUrl: '/assets/Polosa_cink_100х6мм_(6м).jpg',
+      slug: slugify('Полоса оцинкованная', { lower: true }),
       tenantId: ldm.id,
       categoryId: categorySteel.id,
       ingredients: {
@@ -342,6 +366,7 @@ async function main() {
   const profilePvc1 = await prisma.product.create({
     data: {
       name: 'ПВХ профиль REACHMONT Рама',
+      slug: slugify('ПВХ профиль REACHMONT Рама', { lower: true }),
       imageUrl: '/assets/REACHMONT_Rama_60мм.jpg',
       tenantId: ldm.id,
       categoryId: categoryPVC.id,
@@ -353,6 +378,7 @@ async function main() {
   const profilePvc2 = await prisma.product.create({
     data: {
       name: 'ПВХ профиль REACHMONT Импост',
+      slug: slugify('ПВХ профиль REACHMONT Импост', { lower: true }),
       imageUrl: '/assets/REACHMONT_Inpost_60мм.jpg',
       tenantId: ldm.id,
       categoryId: categoryPVC.id,
@@ -364,6 +390,7 @@ async function main() {
   const profilePvc3 = await prisma.product.create({
     data: {
       name: 'ПВХ профиль REACHMONT Створка',
+      slug: slugify('ПВХ профиль REACHMONT Створка', { lower: true }),
       imageUrl: '/assets/REACHMONT_Stvorka_60мм.jpg',
       tenantId: ldm.id,
       categoryId: categoryPVC.id,
@@ -375,6 +402,7 @@ async function main() {
   const profilePvc4 = await prisma.product.create({
     data: {
       name: 'ПВХ профиль REACHMONT Соединительный',
+      slug: slugify('ПВХ профиль REACHMONT Соединительный', { lower: true }),
       imageUrl: '/assets/REACHMONT_Profile_Soedenetel_60мм.jpg',
       tenantId: ldm.id,
       categoryId: categoryPVC.id,
@@ -386,6 +414,7 @@ async function main() {
   const profileAl1 = await prisma.product.create({
     data: {
       name: 'Рама Нижняя Provedal КПС 034',
+      slug: slugify('Рама Нижняя Provedal КПС 034', { lower: true }),
       imageUrl: '/assets/Rama_Niz_Provedal_КПС_034.jpg',
       tenantId: ldm.id,
       categoryId: categorySteel.id,
@@ -397,6 +426,7 @@ async function main() {
   const profileAl2 = await prisma.product.create({
     data: {
       name: 'Provedal Рама Верхняя (КПС 035)',
+      slug: slugify('Provedal Рама Верхняя (КПС 035)', { lower: true }),
       imageUrl: '/assets/Provedal_Rama_Verh_(КПС_035).jpg',
       tenantId: ldm.id,
       categoryId: categorySteel.id,
@@ -408,6 +438,7 @@ async function main() {
   const profileAl3 = await prisma.product.create({
     data: {
       name: 'Provedal Рама Боковая (КПС 036)',
+      slug: slugify('Provedal Рама Боковая (КПС 036)', { lower: true }),
       imageUrl: '/assets/Provedal_Rama_Bock_(КПС_036).jpg',
       tenantId: ldm.id,
       categoryId: categorySteel.id,
@@ -421,6 +452,7 @@ async function main() {
   const productLDM = await prisma.product.create({
     data: {
       name: 'Steel Pipe 40x20',
+      slug: slugify('Steel Pipe 40x20', { lower: true }),
       imageUrl: '/images/steel-pipe.jpg',
       tenantId: ldm.id,
       categoryId: categorySteel.id,
@@ -430,6 +462,7 @@ async function main() {
   const productCompany2 = await prisma.product.create({
     data: {
       name: 'PVC Panel White',
+      slug: slugify('PVC Panel White', { lower: true }),
       imageUrl: '/images/pvc-panel.jpg',
       tenantId: company2.id,
       categoryId: categoryPVC.id,
@@ -449,6 +482,7 @@ async function main() {
       productLength: 2,
       productThickness: 2,
       steelSize: 3,
+      sku: `SKU-${productLDM.id}-1`,
     },
   });
 
@@ -459,6 +493,7 @@ async function main() {
       productMaterials: 'PVC',
       pvcSize: 2,
       productLength: 1,
+      sku: `SKU-${productCompany2.id}-1`,
     },
   });
 

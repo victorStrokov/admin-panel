@@ -1,4 +1,4 @@
-import {  NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { withTracing } from '@/shared/lib/with-tracing';
 import { prisma } from '@/prisma/prisma-client';
 import { getUserFromRequest } from '@/shared/lib/get-user';
@@ -9,8 +9,11 @@ import { verifyCsrf } from '@/shared/lib/verify-csrf';
 
 const productSchema = z.object({
   name: z.string().min(2),
-  imageUrl: z.string().url(),
-  price: z.number().positive(),
+  imageUrl: z.string().url().optional(),
+  slug: z.string().optional(),
+  shortDesc: z.string().optional(),
+  fullDesc: z.string().optional(),
+  status: z.enum(['ACTIVE', 'ARCHIVED', 'DRAFT']).default('ACTIVE'),
   categoryId: z.number(),
 });
 
@@ -38,7 +41,7 @@ export const GET = withTracing<{ id: string }>(async (req, ctx) => {
 
   const product = await prisma.product.findUnique({
     where: { id: productId, tenantId: user.tenantId },
-    include: { category: true, tenant: true },
+    include: { category: true, tenant: true, items: true, images: true },
   });
 
   if (!product) {
@@ -56,7 +59,7 @@ export const GET = withTracing<{ id: string }>(async (req, ctx) => {
   return NextResponse.json({ product, requestId });
 });
 
-// PUT /api/products/[id] 
+// PUT /api/products/[id]
 // ADMIN или MANAGER
 
 export const PUT = withTracing<{ id: string }>(async (req, ctx) => {
@@ -91,15 +94,15 @@ export const PUT = withTracing<{ id: string }>(async (req, ctx) => {
     );
   }
 
-  const { categoryId, ...data } = parsed.data;
+  const { categoryId, slug, ...data } = parsed.data;
 
   const product = await prisma.product.update({
     where: { id: productId, tenantId: staff.tenantId },
     data: {
       ...data,
+      slug: slug ?? slugify(data.name, { lower: true }),
       category: { connect: { id: categoryId } },
     },
-    include: { category: true, tenant: true },
   });
 
   await logActivity(staff.id, 'update_product', req, {

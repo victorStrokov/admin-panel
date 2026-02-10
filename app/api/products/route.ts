@@ -6,12 +6,16 @@ import { getUserFromRequest } from '@/shared/lib/get-user';
 import { allow } from '@/shared/lib/rbac';
 import { logActivity } from '@/shared/lib/log-activity';
 import { verifyCsrf } from '@/shared/lib/verify-csrf';
+import slugify from 'slugify';
 
 // Валидация Product
 const productSchema = z.object({
   name: z.string().min(2, 'Название должно быть не короче 2 символов'),
-  imageUrl: z.string().url('Некорректный URL изображения'),
-  price: z.number().positive('Цена должна быть положительным числом'),
+  imageUrl: z.string().url('Некорректный URL изображения').optional(),
+  slug: z.string().optional(),
+  shortDesc: z.string().optional(),
+  fullDesc: z.string().optional(),
+  status: z.enum(['ACTIVE', 'ARCHIVED', 'DRAFT']).default('ACTIVE'),
   categoryId: z.number(),
 });
 
@@ -70,11 +74,12 @@ export const POST = withTracing(async (req, ctx) => {
     );
   }
 
-  const { categoryId, ...data } = parsed.data;
+  const { categoryId, slug, ...data } = parsed.data;
 
   const product = await prisma.product.create({
     data: {
       ...data,
+      slug: slug ?? slugify(data.name, { lower: true }),
       category: { connect: { id: categoryId } },
       tenant: { connect: { id: staff.tenantId } },
     },
@@ -116,12 +121,13 @@ export const PUT = withTracing(async (req, ctx) => {
     );
   }
 
-  const { id, categoryId, ...data } = parsed.data;
+  const { id, categoryId, slug, ...data } = parsed.data;
 
   const product = await prisma.product.update({
     where: { id, tenantId: staff.tenantId },
     data: {
       ...data,
+      slug: slug ?? slugify(data.name, { lower: true }),
       category: { connect: { id: categoryId } },
     },
     include: { category: true, tenant: true },
