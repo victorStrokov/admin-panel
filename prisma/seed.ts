@@ -483,6 +483,15 @@ async function main() {
       productThickness: 2,
       steelSize: 3,
       sku: `SKU-${productLDM.id}-1`,
+      inventory: {
+        create: {
+          quantity: 0,
+          tenantId: ldm.id,
+        },
+      },
+    },
+    include: {
+      inventory: true,
     },
   });
 
@@ -494,6 +503,15 @@ async function main() {
       pvcSize: 2,
       productLength: 1,
       sku: `SKU-${productCompany2.id}-1`,
+      inventory: {
+        create: {
+          quantity: 0,
+          tenantId: company2.id,
+        },
+      },
+    },
+    include: {
+      inventory: true,
     },
   });
 
@@ -502,288 +520,299 @@ async function main() {
   // ============================
   // 7. Product Items (from user project - много вариантов)
   // ============================
-  await prisma.productItem.createMany({
-    data: [
-      //ПВХ профиль REACHMONT Рама 60мм
-      generateProductItem({
-        productId: profilePvc1.id,
-        pvcSize: 2,
-        productLength: 3,
-        productColor: 1,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc1.id,
-        pvcSize: 2,
-        productLength: 3,
-        productColor: 2,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc1.id,
-        pvcSize: 4,
-        productLength: 2,
-        productColor: 1,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc1.id,
-        pvcSize: 4,
-        productLength: 3,
-        productColor: 1,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc1.id,
-        pvcSize: 4,
-        productLength: 3,
-        productColor: 2,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc1.id,
-        pvcSize: 4,
-        productLength: 2,
-        productColor: 1,
-        productMaterials: 'PVC',
-      }),
-      //ПВХ профиль REACHMONT Импост 60мм
-      generateProductItem({
-        productId: profilePvc2.id,
-        pvcSize: 1,
-        productLength: 3,
-        productColor: 1,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc2.id,
-        pvcSize: 2,
-        productLength: 3,
-        productColor: 2,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc2.id,
-        pvcSize: 4,
-        productLength: 2,
-        productColor: 1,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc2.id,
-        pvcSize: 4,
-        productLength: 2,
-        productColor: 2,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc2.id,
-        pvcSize: 4,
-        productLength: 3,
-        productColor: 3,
-        productMaterials: 'PVC',
-      }),
-      //ПВХ профиль REACHMONT Створка 60мм
-      generateProductItem({
-        productId: profilePvc3.id,
-        pvcSize: 4,
-        productLength: 2,
-        productColor: 1,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc3.id,
-        pvcSize: 3,
-        productLength: 3,
-        productColor: 1,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc3.id,
-        pvcSize: 2,
-        productLength: 2,
-        productColor: 2,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc3.id,
-        pvcSize: 5,
-        productLength: 3,
-        productColor: 2,
-        productMaterials: 'PVC',
-      }),
 
-      generateProductItem({
-        productId: profilePvc4.id,
-        pvcSize: 2,
-        productLength: 2,
-        productColor: 1,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc4.id,
-        pvcSize: 3,
-        productLength: 3,
-        productColor: 2,
-        productMaterials: 'PVC',
-      }),
-      generateProductItem({
-        productId: profilePvc4.id,
-        pvcSize: 4,
-        productLength: 3,
-        productColor: 3,
-        productMaterials: 'PVC',
-      }),
+  const items = [
+    generateProductItem({
+      productId: profilePvc1.id,
+      pvcSize: 2,
+      productLength: 3,
+      productColor: 1,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc1.id,
+      pvcSize: 2,
+      productLength: 3,
+      productColor: 2,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc1.id,
+      pvcSize: 4,
+      productLength: 2,
+      productColor: 1,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc1.id,
+      pvcSize: 4,
+      productLength: 3,
+      productColor: 1,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc1.id,
+      pvcSize: 4,
+      productLength: 3,
+      productColor: 2,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc1.id,
+      pvcSize: 4,
+      productLength: 2,
+      productColor: 1,
+      productMaterials: 'PVC',
+    }),
+    //ПВХ профиль REACHMONT Импост 60мм
+    generateProductItem({
+      productId: profilePvc2.id,
+      pvcSize: 1,
+      productLength: 3,
+      productColor: 1,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc2.id,
+      pvcSize: 2,
+      productLength: 3,
+      productColor: 2,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc2.id,
+      pvcSize: 4,
+      productLength: 2,
+      productColor: 1,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc2.id,
+      pvcSize: 4,
+      productLength: 2,
+      productColor: 2,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc2.id,
+      pvcSize: 4,
+      productLength: 3,
+      productColor: 3,
+      productMaterials: 'PVC',
+    }),
+    //ПВХ профиль REACHMONT Створка 60мм
+    generateProductItem({
+      productId: profilePvc3.id,
+      pvcSize: 4,
+      productLength: 2,
+      productColor: 1,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc3.id,
+      pvcSize: 3,
+      productLength: 3,
+      productColor: 1,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc3.id,
+      pvcSize: 2,
+      productLength: 2,
+      productColor: 2,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc3.id,
+      pvcSize: 5,
+      productLength: 3,
+      productColor: 2,
+      productMaterials: 'PVC',
+    }),
 
-      // Профиль REHAU 245536 — разные типы профиля и длины
-      generateProductItem({
-        productId: profileSteel.id,
-        productLength: 1,
-        steelSize: 1,
-        productThickness: 1,
-        productMaterials: 'STEEL',
-      }),
-      generateProductItem({
-        productId: profileSteel.id,
-        productLength: 2,
-        steelSize: 1,
-        productThickness: 2,
-        productMaterials: 'STEEL',
-      }),
-      generateProductItem({
-        productId: profileSteel.id,
-        productLength: 2,
-        steelSize: 3,
-        productThickness: 3,
-        productMaterials: 'STEEL',
-      }),
+    generateProductItem({
+      productId: profilePvc4.id,
+      pvcSize: 2,
+      productLength: 2,
+      productColor: 1,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc4.id,
+      pvcSize: 3,
+      productLength: 3,
+      productColor: 2,
+      productMaterials: 'PVC',
+    }),
+    generateProductItem({
+      productId: profilePvc4.id,
+      pvcSize: 4,
+      productLength: 3,
+      productColor: 3,
+      productMaterials: 'PVC',
+    }),
 
-      generateProductItem({
-        productId: profileSteel.id,
-        productLength: 2,
-        steelSize: 2,
-        productThickness: 1,
-        productMaterials: 'STEEL',
-      }),
-      generateProductItem({
-        productId: profileSteel.id,
-        productLength: 2,
-        steelSize: 3,
-        productThickness: 3,
-        productMaterials: 'STEEL',
-      }),
-      generateProductItem({
-        productId: profileSteel.id,
-        productLength: 2,
-        steelSize: 4,
-        productThickness: 2,
-        productMaterials: 'STEEL',
-      }),
+    // Профиль REHAU 245536 — разные типы профиля и длины
+    generateProductItem({
+      productId: profileSteel.id,
+      productLength: 1,
+      steelSize: 1,
+      productThickness: 1,
+      productMaterials: 'STEEL',
+    }),
+    generateProductItem({
+      productId: profileSteel.id,
+      productLength: 2,
+      steelSize: 1,
+      productThickness: 2,
+      productMaterials: 'STEEL',
+    }),
+    generateProductItem({
+      productId: profileSteel.id,
+      productLength: 2,
+      steelSize: 3,
+      productThickness: 3,
+      productMaterials: 'STEEL',
+    }),
 
-      // Труба сварная 40х50х2мм (6м) — разные размеры и длины
-      generateProductItem({
-        productId: profileSteel2.id,
-        productLength: 1,
-        steelSize: 5,
-        productThickness: 3,
-        productMaterials: 'STEEL',
-      }),
-      generateProductItem({
-        productId: profileSteel2.id,
-        productLength: 1,
-        steelSize: 6,
-        productThickness: 2,
-        productMaterials: 'STEEL',
-      }),
-      generateProductItem({
-        productId: profileSteel2.id,
-        productLength: 1,
-        steelSize: 4,
-        productThickness: 3,
-        productMaterials: 'STEEL',
-      }),
+    generateProductItem({
+      productId: profileSteel.id,
+      productLength: 2,
+      steelSize: 2,
+      productThickness: 1,
+      productMaterials: 'STEEL',
+    }),
+    generateProductItem({
+      productId: profileSteel.id,
+      productLength: 2,
+      steelSize: 3,
+      productThickness: 3,
+      productMaterials: 'STEEL',
+    }),
+    generateProductItem({
+      productId: profileSteel.id,
+      productLength: 2,
+      steelSize: 4,
+      productThickness: 2,
+      productMaterials: 'STEEL',
+    }),
 
-      // Полоса оцинкованная 100х6мм (6м) — разные длины
-      generateProductItem({
-        productId: profileSteel3.id,
-        productLength: 2,
-        productThickness: 4,
-        productMaterials: 'STEEL',
-      }),
-      generateProductItem({
-        productId: profileSteel3.id,
-        productLength: 2,
-        productThickness: 2,
-        productMaterials: 'STEEL',
-      }),
-      generateProductItem({
-        productId: profileSteel3.id,
-        productLength: 2,
-        productThickness: 3,
-        productMaterials: 'STEEL',
-      }),
-      generateProductItem({
-        productId: profileAl1.id,
-        productColor: 1,
-        productLength: 1,
-        productMaterials: 'ALUMINIUM',
-      }),
-      generateProductItem({
-        productId: profileAl1.id,
-        productColor: 1,
-        productLength: 2,
-        productMaterials: 'ALUMINIUM',
-      }),
-      generateProductItem({
-        productId: profileAl1.id,
-        productColor: 2,
-        productLength: 1,
-        productMaterials: 'ALUMINIUM',
-      }),
-      generateProductItem({
-        productId: profileAl2.id,
-        productColor: 1,
-        productLength: 1,
-        productMaterials: 'ALUMINIUM',
-      }),
-      generateProductItem({
-        productId: profileAl2.id,
-        productColor: 2,
-        productLength: 1,
-        productMaterials: 'ALUMINIUM',
-      }),
-      generateProductItem({
-        productId: profileAl2.id,
-        productColor: 1,
-        productLength: 2,
-        productMaterials: 'ALUMINIUM',
-      }),
-      generateProductItem({
-        productId: profileAl3.id,
-        productColor: 1,
-        productLength: 1,
-        productMaterials: 'ALUMINIUM',
-      }),
-      generateProductItem({
-        productId: profileAl3.id,
-        productColor: 2,
-        productLength: 1,
-        productMaterials: 'ALUMINIUM',
-      }),
-      generateProductItem({
-        productId: profileAl3.id,
-        productColor: 3,
-        productLength: 2,
-        productMaterials: 'ALUMINIUM',
-      }),
-      generateProductItem({
-        productId: profileAl3.id,
-        productColor: 2,
-        productLength: 2,
-        productMaterials: 'ALUMINIUM',
-      }),
-    ],
-  });
+    // Труба сварная 40х50х2мм (6м) — разные размеры и длины
+    generateProductItem({
+      productId: profileSteel2.id,
+      productLength: 1,
+      steelSize: 5,
+      productThickness: 3,
+      productMaterials: 'STEEL',
+    }),
+    generateProductItem({
+      productId: profileSteel2.id,
+      productLength: 1,
+      steelSize: 6,
+      productThickness: 2,
+      productMaterials: 'STEEL',
+    }),
+    generateProductItem({
+      productId: profileSteel2.id,
+      productLength: 1,
+      steelSize: 4,
+      productThickness: 3,
+      productMaterials: 'STEEL',
+    }),
+
+    // Полоса оцинкованная 100х6мм (6м) — разные длины
+    generateProductItem({
+      productId: profileSteel3.id,
+      productLength: 2,
+      productThickness: 4,
+      productMaterials: 'STEEL',
+    }),
+    generateProductItem({
+      productId: profileSteel3.id,
+      productLength: 2,
+      productThickness: 2,
+      productMaterials: 'STEEL',
+    }),
+    generateProductItem({
+      productId: profileSteel3.id,
+      productLength: 2,
+      productThickness: 3,
+      productMaterials: 'STEEL',
+    }),
+    generateProductItem({
+      productId: profileAl1.id,
+      productColor: 1,
+      productLength: 1,
+      productMaterials: 'ALUMINIUM',
+    }),
+    generateProductItem({
+      productId: profileAl1.id,
+      productColor: 1,
+      productLength: 2,
+      productMaterials: 'ALUMINIUM',
+    }),
+    generateProductItem({
+      productId: profileAl1.id,
+      productColor: 2,
+      productLength: 1,
+      productMaterials: 'ALUMINIUM',
+    }),
+    generateProductItem({
+      productId: profileAl2.id,
+      productColor: 1,
+      productLength: 1,
+      productMaterials: 'ALUMINIUM',
+    }),
+    generateProductItem({
+      productId: profileAl2.id,
+      productColor: 2,
+      productLength: 1,
+      productMaterials: 'ALUMINIUM',
+    }),
+    generateProductItem({
+      productId: profileAl2.id,
+      productColor: 1,
+      productLength: 2,
+      productMaterials: 'ALUMINIUM',
+    }),
+    generateProductItem({
+      productId: profileAl3.id,
+      productColor: 1,
+      productLength: 1,
+      productMaterials: 'ALUMINIUM',
+    }),
+    generateProductItem({
+      productId: profileAl3.id,
+      productColor: 2,
+      productLength: 1,
+      productMaterials: 'ALUMINIUM',
+    }),
+    generateProductItem({
+      productId: profileAl3.id,
+      productColor: 3,
+      productLength: 2,
+      productMaterials: 'ALUMINIUM',
+    }),
+    generateProductItem({
+      productId: profileAl3.id,
+      productColor: 2,
+      productLength: 2,
+      productMaterials: 'ALUMINIUM',
+    }),
+  ];
+  for (const item of items) {
+    await prisma.productItem.create({
+      data: {
+        ...item,
+        inventory: {
+          create: {
+            quantity: 0,
+            tenantId: ldm.id, // твой tenant
+          },
+        },
+      },
+    });
+  }
 
   // ============================
   // 8. Orders (от административного проекта)

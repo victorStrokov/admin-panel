@@ -1,28 +1,21 @@
-import { NextResponse } from 'next/server';
-import { withTracing } from '@/shared/lib/with-tracing';
 import { prisma } from '@/prisma/prisma-client';
 import { getUserFromRequest } from '@/shared/lib/get-user';
-import { allow } from '@/shared/lib/rbac';
 import { logActivity } from '@/shared/lib/log-activity';
-import { z } from 'zod';
+import { allow } from '@/shared/lib/rbac';
 import { verifyCsrf } from '@/shared/lib/verify-csrf';
+import { withTracing } from '@/shared/lib/with-tracing';
+import { NextResponse } from 'next/server';
 import slugify from 'slugify';
+import z from 'zod';
 
-const productSchema = z.object({
+const categorySchema = z.object({
   name: z.string().min(2),
-  imageUrl: z.string().url().optional(),
   slug: z.string().optional(),
-  shortDesc: z.string().optional(),
-  fullDesc: z.string().optional(),
-  status: z.enum(['ACTIVE', 'ARCHIVED', 'DRAFT']).default('ACTIVE'),
-  categoryId: z.number(),
+  parentId: z.number().optional(),
 });
 
-// GET /api/products/[id]
-// Доступно всем авторизованным пользователям
-
 export const GET = withTracing<{ id: string }>(async (req, ctx) => {
-  const { requestId, latency } = ctx;
+  const { requestId, params } = ctx;
 
   const user = await getUserFromRequest(req);
   if (!user) {
@@ -32,47 +25,27 @@ export const GET = withTracing<{ id: string }>(async (req, ctx) => {
     );
   }
 
-  const { id } = await ctx.params;
-  const productId = Number(id);
-
-  if (isNaN(productId)) {
+  const id = Number(params.id);
+  if (isNaN(id)) {
     return NextResponse.json(
       { error: 'Invalid ID', requestId },
       { status: 400 },
     );
   }
 
-  const product = await prisma.product.findUnique({
-    where: { id: productId, tenantId: user.tenantId },
-    include: {
-      category: true,
-      tenant: true,
-      images: true,
-      items: {
-        include: {
-          inventory: true,
-        },
-      },
-    },
+  const category = await prisma.category.findFirst({
+    where: { id, tenantId: user.tenantId },
   });
 
-  if (!product) {
+  if (!category) {
     return NextResponse.json(
-      { error: 'Product not found', requestId },
+      { error: 'Category not found', requestId },
       { status: 404 },
     );
   }
 
-  await logActivity(user.id, 'view_product', req, {
-    productId,
-    latencyMs: latency,
-  });
-
-  return NextResponse.json({ product, requestId });
+  return NextResponse.json({ category, requestId });
 });
-
-// PUT /api/products/[id]
-// ADMIN или MANAGER
 
 export const PUT = withTracing<{ id: string }>(async (req, ctx) => {
   const { requestId, params, latency } = ctx;
@@ -88,8 +61,8 @@ export const PUT = withTracing<{ id: string }>(async (req, ctx) => {
     );
   }
 
-  const productId = Number(params.id);
-  if (isNaN(productId)) {
+  const id = Number(params.id);
+  if (isNaN(id)) {
     return NextResponse.json(
       { error: 'Invalid ID', requestId },
       { status: 400 },
@@ -97,7 +70,7 @@ export const PUT = withTracing<{ id: string }>(async (req, ctx) => {
   }
 
   const body = await req.json();
-  const parsed = productSchema.safeParse(body);
+  const parsed = categorySchema.safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json(
@@ -106,28 +79,24 @@ export const PUT = withTracing<{ id: string }>(async (req, ctx) => {
     );
   }
 
-  const { categoryId, slug, ...data } = parsed.data;
+  const { name, slug, parentId } = parsed.data;
 
-  const product = await prisma.product.update({
-    where: { id: productId, tenantId: staff.tenantId },
+  const category = await prisma.category.update({
+    where: { id, tenantId: staff.tenantId },
     data: {
-      ...data,
-      slug: slug ?? slugify(data.name, { lower: true }),
-      category: { connect: { id: categoryId } },
+      name,
+      slug: slug ?? slugify(name, { lower: true }),
+      parentId: parentId ?? null,
     },
   });
 
-  await logActivity(staff.id, 'update_product', req, {
-    productId,
-    changes: parsed.data,
+  await logActivity(staff.id, 'update_category', req, {
+    categoryId: id,
     latencyMs: latency,
   });
 
-  return NextResponse.json({ product, requestId });
+  return NextResponse.json({ category, requestId });
 });
-
-// DELETE /api/products/[id]
-// Только ADMIN
 
 export const DELETE = withTracing<{ id: string }>(async (req, ctx) => {
   const { requestId, params, latency } = ctx;
@@ -143,27 +112,27 @@ export const DELETE = withTracing<{ id: string }>(async (req, ctx) => {
     );
   }
 
-  const productId = Number(params.id);
-  if (isNaN(productId)) {
+  const id = Number(params.id);
+  if (isNaN(id)) {
     return NextResponse.json(
       { error: 'Invalid ID', requestId },
       { status: 400 },
     );
   }
 
-  const deleted = await prisma.product.deleteMany({
-    where: { id: productId, tenantId: admin.tenantId },
+  const deleted = await prisma.category.deleteMany({
+    where: { id, tenantId: admin.tenantId },
   });
 
   if (deleted.count === 0) {
     return NextResponse.json(
-      { error: 'Product not found', requestId },
+      { error: 'Category not found', requestId },
       { status: 404 },
     );
   }
 
-  await logActivity(admin.id, 'delete_product', req, {
-    productId,
+  await logActivity(admin.id, 'delete_category', req, {
+    categoryId: id,
     latencyMs: latency,
   });
 

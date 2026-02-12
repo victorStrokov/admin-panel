@@ -7,11 +7,14 @@ import { allow } from '@/shared/lib/rbac';
 import { logActivity } from '@/shared/lib/log-activity';
 import { verifyCsrf } from '@/shared/lib/verify-csrf';
 import slugify from 'slugify';
+import fs from 'fs';
+import path from 'path';
+import { Prisma } from '@prisma/client';
 
 // Валидация Product
 const productSchema = z.object({
   name: z.string().min(2, 'Название должно быть не короче 2 символов'),
-  imageUrl: z.string().url('Некорректный URL изображения').optional(),
+  imageUrl: z.string().min(1).optional(),
   slug: z.string().optional(),
   shortDesc: z.string().optional(),
   fullDesc: z.string().optional(),
@@ -35,7 +38,16 @@ export const GET = withTracing(async (req, ctx) => {
 
   const products = await prisma.product.findMany({
     where: { tenantId: user.tenantId },
-    include: { category: true, tenant: true },
+    include: {
+      category: true,
+      tenant: true,
+      items: {
+        select: {
+          id: true,
+          price: true,
+        },
+      },
+    },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -76,15 +88,71 @@ export const POST = withTracing(async (req, ctx) => {
 
   const { categoryId, slug, ...data } = parsed.data;
 
-  const product = await prisma.product.create({
-    data: {
-      ...data,
-      slug: slug ?? slugify(data.name, { lower: true }),
-      category: { connect: { id: categoryId } },
-      tenant: { connect: { id: staff.tenantId } },
-    },
-    include: { category: true, tenant: true },
-  });
+  let product;
+
+  try {
+    product = await prisma.product.create({
+      data: {
+        ...data,
+        slug: slug ?? slugify(data.name, { lower: true }),
+        category: { connect: { id: categoryId } },
+        tenant: { connect: { id: staff.tenantId } },
+      },
+      include: { category: true, tenant: true },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      const target = err.meta?.target as string[] | undefined;
+
+      if (err.code === 'P2002' && target?.includes('slug')) {
+        return NextResponse.json(
+          {
+            error: {
+              slug: ['Такой slug уже существует'],
+            },
+            requestId,
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    console.error('Unhandled error:', err);
+
+    return NextResponse.json(
+      { error: 'Internal server error', requestId },
+      { status: 500 },
+    );
+  }
+
+  // --- Перенос изображения из temp в products ---
+  if (parsed.data.imageUrl) {
+    const tempPath = path.join(process.cwd(), 'public', parsed.data.imageUrl);
+    const finalDir = path.join(process.cwd(), 'public', 'uploads', 'products');
+
+    if (!fs.existsSync(finalDir)) {
+      fs.mkdirSync(finalDir, { recursive: true });
+    }
+
+    let finalPath = path.join(finalDir, path.basename(parsed.data.imageUrl));
+
+    // Если файл уже существует — создаём уникальное имя
+    if (fs.existsSync(finalPath)) {
+      const ext = path.extname(finalPath);
+      const base = path.basename(finalPath, ext);
+      finalPath = path.join(finalDir, `${base}-${Date.now()}${ext}`);
+    }
+
+    fs.renameSync(tempPath, finalPath);
+
+    await prisma.productImage.create({
+      data: {
+        productId: product.id,
+        url: `/uploads/products/${path.basename(finalPath)}`,
+        sortOrder: 0,
+      },
+    });
+  }
 
   await logActivity(staff.id, 'create_product', req, {
     productId: product.id,

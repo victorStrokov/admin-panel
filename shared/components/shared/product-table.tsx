@@ -1,6 +1,7 @@
+/* eslint-disable @next/next/no-img-element */
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
 
 import {
   Badge,
@@ -15,65 +16,133 @@ import {
   TableHeader,
   TableRow,
 } from '../ui';
+
 import { cn } from '@/shared/lib/utils';
 
 export type Product = {
-  id: string;
+  id: number;
   name: string;
-  price?: number;
-  status: 'active' | 'archived';
+  slug: string;
+  imageUrl?: string | null;
+  status: 'ACTIVE' | 'ARCHIVED' | 'DRAFT';
+  category: { id: number; name: string } | null;
+  items: { id: number; price: number | null }[];
 };
 
 export function ProductTable({ products }: { products: Product[] }) {
-  const [selected, setSelected] = useState<Product | null>(null);
-
   return (
     <Table className={cn('w-full', 'border', 'rounded')}>
       <TableHeader>
         <TableRow>
-          <TableHead>Название</TableHead>
-          <TableHead>Цена</TableHead>
+          <TableHead>Товар</TableHead>
+          <TableHead>Категория</TableHead>
           <TableHead>Статус</TableHead>
+          <TableHead>Варианты</TableHead>
           <TableHead className='text-right'>Действия</TableHead>
         </TableRow>
       </TableHeader>
+
       <TableBody>
-        {products.map((p) => (
-          <TableRow key={p.id}>
-            <TableCell>{p.name}</TableCell>
-            <TableCell>{p.price} ₽</TableCell>
-            <TableCell>
-              <Badge variant={p.status === 'active' ? 'default' : 'secondary'}>
-                {p.status}
-              </Badge>
-            </TableCell>
-            <TableCell className='text-right space-x-2'>
-              <Button
-                variant='outline'
-                size='sm'>
-                Редактировать
-              </Button>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    variant='destructive'
-                    size='sm'>
-                    Удалить
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <p>
-                    Удалить товар <b>{p.name}</b>?
-                  </p>
-                  <div className='flex justify-end gap-2 mt-4'>
-                    <Button variant='outline'>Отмена</Button>
-                    <Button variant='destructive'>Удалить</Button>
+        {products.map((p) => {
+          const minPrice =
+            p.items.length > 0
+              ? Math.min(...p.items.map((i) => i.price ?? 0))
+              : null;
+
+          return (
+            <TableRow key={p.id}>
+              {/* Название + картинка + slug */}
+              <TableCell>
+                <div className='flex items-center gap-3'>
+                  <img
+                    src={p.imageUrl || '/placeholder.png'}
+                    alt={p.name}
+                    className='w-12 h-12 rounded object-cover border'
+                  />
+
+                  <div>
+                    <div className='font-medium'>{p.name}</div>
+                    <div className='text-xs text-gray-500'>{p.slug}</div>
+
+                    {minPrice !== null && (
+                      <div className='text-sm text-gray-700'>
+                        от {minPrice} ₽
+                      </div>
+                    )}
                   </div>
-                </DialogContent>
-              </Dialog>
-            </TableCell>
-          </TableRow>
-        ))}
+                </div>
+              </TableCell>
+
+              {/* Категория */}
+              <TableCell>
+                {p.category ? (
+                  <span>{p.category.name}</span>
+                ) : (
+                  <span className='text-gray-400'>—</span>
+                )}
+              </TableCell>
+
+              {/* Статус */}
+              <TableCell>
+                <Badge
+                  variant={
+                    p.status === 'ACTIVE'
+                      ? 'default'
+                      : p.status === 'DRAFT'
+                        ? 'secondary'
+                        : 'outline'
+                  }>
+                  {p.status}
+                </Badge>
+              </TableCell>
+
+              {/* Количество вариантов */}
+              <TableCell>{p.items.length}</TableCell>
+
+              {/* Действия */}
+              <TableCell className='text-right space-x-2'>
+                <Link href={`/admin/products/${p.id}`}>
+                  <Button
+                    variant='outline'
+                    size='sm'>
+                    Редактировать
+                  </Button>
+                </Link>
+
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant='destructive'
+                      size='sm'>
+                      Удалить
+                    </Button>
+                  </DialogTrigger>
+
+                  <DialogContent>
+                    <p>
+                      Удалить товар <b>{p.name}</b>?
+                    </p>
+
+                    <div className='flex justify-end gap-2 mt-4'>
+                      <Button variant='outline'>Отмена</Button>
+
+                      <Button
+                        variant='destructive'
+                        onClick={async () => {
+                          await fetch(`/api/products?id=${p.id}`, {
+                            method: 'DELETE',
+                          });
+                          window.location.reload();
+                        }}>
+                        Удалить
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );

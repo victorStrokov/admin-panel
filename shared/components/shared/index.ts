@@ -6,4 +6,8 @@ export { InventoryLogDrawer } from './InventoryLogDrawer';
 export { InventoryStats } from './InventoryStats';
 export type { InventoryColumn } from './InventoryColumns';
 export { inventoryColumns } from './InventoryColumns';
+export { ProductMainInfo } from './ProductMainInfo';
+export { ProductImages } from './ProductImages';
+export { ProductVariants } from './ProductVariants';
+export { ProductInventory } from './ProductInventory';
 export * from './admin';
