@@ -1,4 +1,5 @@
 import { prisma } from '@/prisma/prisma-client';
+import { ProductImages } from '@/shared/components';
 import { ProductForm } from '@/shared/components/shared/product-form';
 
 interface Props {
@@ -7,64 +8,70 @@ interface Props {
 
 export default async function ProductPage(props: Props) {
   const params = await props.params;
-  const { id } = params;
-  const productId = Number(id);
+  const productId = Number(params.id);
 
-  let product = null;
-  try {
-    // Загружаем товар из базы
-    product = await prisma.product.findUnique({
-      where: { id: productId },
-      include: { category: true, items: true },
-    });
-  } catch (error) {
-    console.error('Ошибка при загрузке товара:', error);
-    return <div className='p-6 text-red-600'>Ошибка загрузки товара</div>;
-  }
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: {
+      category: true,
+      items: true,
+      images: true,
+    },
+  });
 
   if (!product) {
     return <div className='p-6'>Товар не найден</div>;
   }
 
-  // Обработчик сохранения (через API)
+  const categories = await prisma.category.findMany({
+    select: { id: true, name: true },
+  });
+
   async function handleProductSubmit({
     name,
-    imageUrl,
     categoryId,
+    shortDesc,
+    fullDesc,
+    status,
   }: {
     name: string;
-    imageUrl: string;
     categoryId: number;
+    shortDesc?: string;
+    fullDesc?: string;
+    status: 'ACTIVE' | 'ARCHIVED' | 'DRAFT';
   }) {
-    'use server'; // Next.js 15 server action
-    try {
-      await prisma.product.update({
-        where: { id: productId },
-        data: {
-          name: name,
-          imageUrl: imageUrl,
-          categoryId: categoryId,
-          updatedAt: new Date(),
-        },
-      });
-      console.log(`Товар #${productId} успешно обновлён`);
-    } catch (error) {
-      console.error(`Ошибка при обновлении товара #${productId}:`, error);
-      throw new Error('Не удалось обновить товар');
-    }
+    'use server';
+
+    await prisma.product.update({
+      where: { id: productId },
+      data: {
+        name,
+        categoryId,
+        shortDesc,
+        fullDesc,
+        status,
+        updatedAt: new Date(),
+      },
+    });
   }
 
   return (
     <div className='p-6 space-y-6'>
       <h1 className='text-2xl font-bold'>Редактирование товара</h1>
+
       <ProductForm
         onSubmit={handleProductSubmit}
         initialData={{
           name: product.name,
-          imageUrl: product.imageUrl,
           categoryId: product.categoryId,
+          shortDesc: product.shortDesc ?? '',
+          fullDesc: product.fullDesc ?? '',
+          status: product.status,
         }}
+        categories={categories}
       />
+
+      <ProductImages product={product} />
     </div>
   );
 }

@@ -55,9 +55,9 @@ export default function CreateProductPage() {
 
     setLoading(true);
 
-    let imageUrl: string | null = null;
+    let tempImageUrl: string | null = null;
 
-    // 1. Загружаем изображение
+    // 1. Загружаем изображение во временную папку
     if (imageFile) {
       setUploading(true);
 
@@ -81,27 +81,26 @@ export default function CreateProductPage() {
       }
 
       const uploadData = await uploadRes.json();
-      imageUrl = uploadData.url;
+      tempImageUrl = uploadData.url;
     }
 
-
     // 2. Создаём продукт
-   const res = await fetch('/api/products', {
-     method: 'POST',
-     headers: {
-       'Content-Type': 'application/json',
-       'X-CSRF-Token': getCsrfToken(),
-     },
-     body: JSON.stringify({
-       name,
-       slug,
-       categoryId,
-       status,
-       shortDesc,
-       fullDesc,
-       imageUrl,
-     }),
-   });
+    const res = await fetch('/api/products', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': getCsrfToken(),
+      },
+      body: JSON.stringify({
+        name,
+        slug,
+        categoryId,
+        status,
+        shortDesc,
+        fullDesc,
+        tempImageUrl,
+      }),
+    });
 
     const data = await res.json();
     setLoading(false);

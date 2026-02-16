@@ -14,8 +14,8 @@ import { Prisma } from '@prisma/client';
 // Валидация Product
 const productSchema = z.object({
   name: z.string().min(2, 'Название должно быть не короче 2 символов'),
-  imageUrl: z.string().min(1).optional(),
-  slug: z.string().optional(),
+  tempImageUrl: z.string().optional(),
+  slug: z.string().optional().nullable(),
   shortDesc: z.string().optional(),
   fullDesc: z.string().optional(),
   status: z.enum(['ACTIVE', 'ARCHIVED', 'DRAFT']).default('ACTIVE'),
@@ -47,6 +47,7 @@ export const GET = withTracing(async (req, ctx) => {
           price: true,
         },
       },
+      images: true,
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -86,7 +87,7 @@ export const POST = withTracing(async (req, ctx) => {
     );
   }
 
-  const { categoryId, slug, ...data } = parsed.data;
+  const { categoryId, slug, tempImageUrl, ...data } = parsed.data;
 
   let product;
 
@@ -98,7 +99,7 @@ export const POST = withTracing(async (req, ctx) => {
         category: { connect: { id: categoryId } },
         tenant: { connect: { id: staff.tenantId } },
       },
-      include: { category: true, tenant: true },
+      include: { category: true, tenant: true, images: true },
     });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError) {
@@ -126,15 +127,16 @@ export const POST = withTracing(async (req, ctx) => {
   }
 
   // --- Перенос изображения из temp в products ---
-  if (parsed.data.imageUrl) {
-    const tempPath = path.join(process.cwd(), 'public', parsed.data.imageUrl);
+  if (tempImageUrl) {
+    const tempPath = path.join(process.cwd(), 'public', tempImageUrl);
+
     const finalDir = path.join(process.cwd(), 'public', 'uploads', 'products');
 
     if (!fs.existsSync(finalDir)) {
       fs.mkdirSync(finalDir, { recursive: true });
     }
 
-    let finalPath = path.join(finalDir, path.basename(parsed.data.imageUrl));
+    let finalPath = path.join(finalDir, path.basename(tempImageUrl));
 
     // Если файл уже существует — создаём уникальное имя
     if (fs.existsSync(finalPath)) {
@@ -154,17 +156,24 @@ export const POST = withTracing(async (req, ctx) => {
     });
   }
 
+  const fullProduct = await prisma.product.findUnique({
+    where: { id: product.id },
+    include: { category: true, tenant: true, images: true },
+  });
+
   await logActivity(staff.id, 'create_product', req, {
     productId: product.id,
     latencyMs: latency,
   });
 
-  return NextResponse.json({ product, requestId });
+  return NextResponse.json({ product: fullProduct, requestId });
 });
 
 // ---------------- PUT /api/products ----------------
 // Только ADMIN или MANAGER
-
+const updateProductSchema = productSchema
+  .omit({ tempImageUrl: true })
+  .extend({ id: z.number() });
 export const PUT = withTracing(async (req, ctx) => {
   const { requestId, latency } = ctx;
 
@@ -180,7 +189,7 @@ export const PUT = withTracing(async (req, ctx) => {
   }
 
   const body = await req.json();
-  const parsed = productSchema.extend({ id: z.number() }).safeParse(body);
+  const parsed = updateProductSchema.safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json(
@@ -198,7 +207,12 @@ export const PUT = withTracing(async (req, ctx) => {
       slug: slug ?? slugify(data.name, { lower: true }),
       category: { connect: { id: categoryId } },
     },
-    include: { category: true, tenant: true },
+    include: { category: true, tenant: true, images: true },
+  });
+
+  const fullProduct = await prisma.product.findUnique({
+    where: { id: product.id },
+    include: { category: true, tenant: true, images: true },
   });
 
   await logActivity(staff.id, 'update_product', req, {
@@ -206,12 +220,11 @@ export const PUT = withTracing(async (req, ctx) => {
     latencyMs: latency,
   });
 
-  return NextResponse.json({ product, requestId });
+  return NextResponse.json({ product: fullProduct, requestId });
 });
 
-// ---------------- DELETE /api/products ----------------
 // Только ADMIN
-
+// DELETE /api/products
 export const DELETE = withTracing(async (req, ctx) => {
   const { requestId, latency } = ctx;
 
@@ -236,6 +249,25 @@ export const DELETE = withTracing(async (req, ctx) => {
     );
   }
 
+  //  Загружаем все изображения товара
+  const images = await prisma.productImage.findMany({
+    where: { productId: id, product: { tenantId: admin.tenantId } },
+  });
+
+  //  Удаляем файлы с диска
+  for (const img of images) {
+    const filePath = path.join(process.cwd(), 'public', img.url);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
+
+  //  Удаляем записи изображений из базы
+  await prisma.productImage.deleteMany({
+    where: { productId: id },
+  });
+
+  // Удаляем сам продукт
   const deleted = await prisma.product.deleteMany({
     where: { id, tenantId: admin.tenantId },
   });

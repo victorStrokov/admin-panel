@@ -12,7 +12,7 @@ export const orderItemSchema = z.object({
   productItemId: z.number().int().positive(),
   productId: z.number().int().positive(),
   name: z.string().min(1),
-  imageUrl: z.string().url().or(z.string().min(1)), // если не всегда URL — оставим просто строку
+  image: z.string().url().or(z.string().min(1)),
   price: z.number().int().nonnegative(),
   quantity: z.number().int().positive(),
   ingredients: z.array(orderItemIngredientSchema).optional(),
@@ -23,7 +23,7 @@ export const orderBaseSchema = z.object({
   status: z.enum(['PENDING', 'SUCCEEDED', 'CANCELLED']).default('PENDING'),
   totalAmount: z.number().int().nonnegative(),
   token: z.string().min(1),
-  items: z.array(orderItemSchema), // ← строго типизированный JSON
+  items: z.array(orderItemSchema),
   fullName: z.string().min(1).max(150),
   email: z.string().email().max(255),
   phone: z.string().min(5).max(20),
@@ -42,7 +42,6 @@ export const orderUpdateSchema = z.object({
   totalAmount: z.number().int().nonnegative(),
 });
 
-// DTO-типы (на будущее, если захочешь использовать)
 export type OrderCreateDto = z.infer<typeof orderCreateSchema>;
 export type OrderUpdateDto = z.infer<typeof orderUpdateSchema>;
 export type OrderItemDto = z.infer<typeof orderItemSchema>;

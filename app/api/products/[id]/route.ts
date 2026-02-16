@@ -7,11 +7,13 @@ import { logActivity } from '@/shared/lib/log-activity';
 import { z } from 'zod';
 import { verifyCsrf } from '@/shared/lib/verify-csrf';
 import slugify from 'slugify';
+import path from 'path';
+import fs from 'fs';
 
 const productSchema = z.object({
   name: z.string().min(2),
-  imageUrl: z.string().url().optional(),
-  slug: z.string().optional(),
+  tempImageUrl: z.string().optional(),
+  slug: z.string().optional().nullable(),
   shortDesc: z.string().optional(),
   fullDesc: z.string().optional(),
   status: z.enum(['ACTIVE', 'ARCHIVED', 'DRAFT']).default('ACTIVE'),
@@ -73,7 +75,7 @@ export const GET = withTracing<{ id: string }>(async (req, ctx) => {
 
 // PUT /api/products/[id]
 // ADMIN или MANAGER
-
+const updateProductSchema = productSchema.omit({ tempImageUrl: true });
 export const PUT = withTracing<{ id: string }>(async (req, ctx) => {
   const { requestId, params, latency } = ctx;
 
@@ -97,7 +99,7 @@ export const PUT = withTracing<{ id: string }>(async (req, ctx) => {
   }
 
   const body = await req.json();
-  const parsed = productSchema.safeParse(body);
+  const parsed = updateProductSchema.safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json(
@@ -115,6 +117,7 @@ export const PUT = withTracing<{ id: string }>(async (req, ctx) => {
       slug: slug ?? slugify(data.name, { lower: true }),
       category: { connect: { id: categoryId } },
     },
+    include: { category: true, tenant: true, images: true },
   });
 
   await logActivity(staff.id, 'update_product', req, {
@@ -151,6 +154,25 @@ export const DELETE = withTracing<{ id: string }>(async (req, ctx) => {
     );
   }
 
+  // 🔥 Загружаем все изображения товара
+  const images = await prisma.productImage.findMany({
+    where: { productId },
+  });
+
+  // 🔥 Удаляем файлы с диска
+  for (const img of images) {
+    const filePath = path.join(process.cwd(), 'public', img.url);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
+
+  // 🔥 Удаляем записи изображений из базы
+  await prisma.productImage.deleteMany({
+    where: { productId },
+  });
+
+  // 🔥 Удаляем сам продукт
   const deleted = await prisma.product.deleteMany({
     where: { id: productId, tenantId: admin.tenantId },
   });

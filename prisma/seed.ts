@@ -283,9 +283,26 @@ async function main() {
   // 3b. Ingredients (from user project)
   // ============================
   await prisma.ingredient.createMany({
-    data: _ingredients,
+    data: _ingredients.map((i) => ({
+      id: i.id,
+      name: i.name,
+      price: i.price,
+    })),
   });
   console.log('Ingredients created');
+  for (const ing of _ingredients) {
+    if (!ing.images) continue;
+
+    for (const [index, img] of ing.images.entries()) {
+      await prisma.ingredientImage.create({
+        data: {
+          ingredientId: ing.id,
+          url: img.url,
+          sortOrder: img.sortOrder ?? index,
+        },
+      });
+    }
+  }
 
   // ============================
   // 4. Products (from user project + admin project)
@@ -293,28 +310,55 @@ async function main() {
   try {
     // Create products from user project with tenantId (LDM)
     const productsWithTenant = products.map((p) => ({
-      ...p,
+      name: p.name,
+      categoryId: p.categoryId,
       tenantId: ldm.id,
       slug: slugify(p.name, { lower: true }),
     }));
+
     await prisma.product.createMany({
       data: productsWithTenant,
     });
+
+    // 4b. Product images
+    for (const p of products) {
+      const product = await prisma.product.findFirst({
+        where: { name: p.name, tenantId: ldm.id },
+      });
+
+      if (!product || !p.images) continue;
+
+      const images = Array.isArray(p.images)
+        ? p.images
+        : [{ url: p.images, sortOrder: 0 }];
+
+      for (const [index, img] of images.entries()) {
+        await prisma.productImage.create({
+          data: {
+            productId: product.id,
+            url: img.url ?? img,
+            sortOrder: img.sortOrder ?? index,
+          },
+        });
+      }
+    }
   } catch (error: unknown) {
     console.error(
       'Error creating products:',
       error instanceof Error ? error.message : 'Unknown error',
     );
     console.error('Trying to create products one by one...');
+
     for (let i = 0; i < products.length; i++) {
       const p = products[i];
       try {
         await prisma.product.create({
           data: {
-            ...p,
+            name: p.name,
+            categoryId: p.categoryId,
             tenantId: ldm.id,
             slug: slugify(p.name, { lower: true }),
-          } as Prisma.ProductUncheckedCreateInput,
+          },
         });
       } catch (e: unknown) {
         console.error(`❌ Error creating product ${i}: ${p.name}`);
@@ -322,6 +366,7 @@ async function main() {
         throw e;
       }
     }
+
     throw error;
   }
 
@@ -330,8 +375,9 @@ async function main() {
     data: {
       name: 'REHAU 245536',
       slug: slugify('REHAU 245536', { lower: true }),
-
-      imageUrl: '/assets/OIG2.jpg',
+      images: {
+        create: [{ url: '/assets/OIG2.jpg', sortOrder: 0 }],
+      },
       tenantId: ldm.id,
       categoryId: categorySteel.id,
       ingredients: {
@@ -343,7 +389,9 @@ async function main() {
     data: {
       name: 'Труба сварная',
       slug: slugify('Труба сварная', { lower: true }),
-      imageUrl: '/assets/OIG3.jpg',
+      images: {
+        create: [{ url: '/assets/OIG3.jpg', sortOrder: 0 }],
+      },
       tenantId: ldm.id,
       categoryId: categorySteel.id,
       ingredients: {
@@ -355,6 +403,9 @@ async function main() {
     data: {
       name: 'Полоса оцинкованная',
       slug: slugify('Полоса оцинкованная', { lower: true }),
+      images: {
+        create: [{ url: '/assets/Polosa_Otsinkovannaya.jpg', sortOrder: 0 }],
+      },
       tenantId: ldm.id,
       categoryId: categorySteel.id,
       ingredients: {
@@ -367,7 +418,9 @@ async function main() {
     data: {
       name: 'ПВХ профиль REACHMONT Рама',
       slug: slugify('ПВХ профиль REACHMONT Рама', { lower: true }),
-      imageUrl: '/assets/REACHMONT_Rama_60мм.jpg',
+      images: {
+        create: [{ url: '/assets/REACHMONT_Rama_60мм.jpg', sortOrder: 0 }],
+      },
       tenantId: ldm.id,
       categoryId: categoryPVC.id,
       ingredients: {
@@ -379,7 +432,9 @@ async function main() {
     data: {
       name: 'ПВХ профиль REACHMONT Импост',
       slug: slugify('ПВХ профиль REACHMONT Импост', { lower: true }),
-      imageUrl: '/assets/REACHMONT_Inpost_60мм.jpg',
+      images: {
+        create: [{ url: '/assets/REACHMONT_Inpost_60мм.jpg', sortOrder: 0 }],
+      },
       tenantId: ldm.id,
       categoryId: categoryPVC.id,
       ingredients: {
@@ -391,7 +446,9 @@ async function main() {
     data: {
       name: 'ПВХ профиль REACHMONT Створка',
       slug: slugify('ПВХ профиль REACHMONT Створка', { lower: true }),
-      imageUrl: '/assets/REACHMONT_Stvorka_60мм.jpg',
+      images: {
+        create: [{ url: '/assets/REACHMONT_Stvorka_60мм.jpg', sortOrder: 0 }],
+      },
       tenantId: ldm.id,
       categoryId: categoryPVC.id,
       ingredients: {
@@ -403,7 +460,14 @@ async function main() {
     data: {
       name: 'ПВХ профиль REACHMONT Соединительный',
       slug: slugify('ПВХ профиль REACHMONT Соединительный', { lower: true }),
-      imageUrl: '/assets/REACHMONT_Profile_Soedenetel_60мм.jpg',
+      images: {
+        create: [
+          {
+            url: '/assets/REACHMONT_Profile_Soedenetel_60мм.jpg',
+            sortOrder: 0,
+          },
+        ],
+      },
       tenantId: ldm.id,
       categoryId: categoryPVC.id,
       ingredients: {
@@ -415,7 +479,11 @@ async function main() {
     data: {
       name: 'Рама Нижняя Provedal КПС 034',
       slug: slugify('Рама Нижняя Provedal КПС 034', { lower: true }),
-      imageUrl: '/assets/Rama_Niz_Provedal_КПС_034.jpg',
+      images: {
+        create: [
+          { url: '/assets/Rama_Niz_Provedal_КПС_034.jpg', sortOrder: 0 },
+        ],
+      },
       tenantId: ldm.id,
       categoryId: categorySteel.id,
       ingredients: {
@@ -427,7 +495,11 @@ async function main() {
     data: {
       name: 'Provedal Рама Верхняя (КПС 035)',
       slug: slugify('Provedal Рама Верхняя (КПС 035)', { lower: true }),
-      imageUrl: '/assets/Provedal_Rama_Verh_(КПС_035).jpg',
+      images: {
+        create: [
+          { url: '/assets/Provedal_Rama_Verh_(КПС_035).jpg', sortOrder: 0 },
+        ],
+      },
       tenantId: ldm.id,
       categoryId: categorySteel.id,
       ingredients: {
@@ -439,7 +511,11 @@ async function main() {
     data: {
       name: 'Provedal Рама Боковая (КПС 036)',
       slug: slugify('Provedal Рама Боковая (КПС 036)', { lower: true }),
-      imageUrl: '/assets/Provedal_Rama_Bock_(КПС_036).jpg',
+      images: {
+        create: [
+          { url: '/assets/Provedal_Rama_Bock_(КПС_036).jpg', sortOrder: 0 },
+        ],
+      },
       tenantId: ldm.id,
       categoryId: categorySteel.id,
       ingredients: {
@@ -453,7 +529,9 @@ async function main() {
     data: {
       name: 'Steel Pipe 40x20',
       slug: slugify('Steel Pipe 40x20', { lower: true }),
-      imageUrl: '/images/steel-pipe.jpg',
+      images: {
+        create: [{ url: '/images/steel-pipe.jpg', sortOrder: 0 }],
+      },
       tenantId: ldm.id,
       categoryId: categorySteel.id,
     },
@@ -463,7 +541,9 @@ async function main() {
     data: {
       name: 'PVC Panel White',
       slug: slugify('PVC Panel White', { lower: true }),
-      imageUrl: '/images/pvc-panel.jpg',
+      images: {
+        create: [{ url: '/images/pvc-panel.jpg', sortOrder: 0 }],
+      },
       tenantId: company2.id,
       categoryId: categoryPVC.id,
     },

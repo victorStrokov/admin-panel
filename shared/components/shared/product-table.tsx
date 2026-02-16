@@ -23,7 +23,7 @@ export type Product = {
   id: number;
   name: string;
   slug: string;
-  imageUrl?: string | null;
+  images: { id: number; url: string }[];
   status: 'ACTIVE' | 'ARCHIVED' | 'DRAFT';
   category: { id: number; name: string } | null;
   items: { id: number; price: number | null }[];
@@ -55,7 +55,7 @@ export function ProductTable({ products }: { products: Product[] }) {
               <TableCell>
                 <div className='flex items-center gap-3'>
                   <img
-                    src={p.imageUrl || '/placeholder.png'}
+                    src={p.images?.[0]?.url || '/placeholder.png'}
                     alt={p.name}
                     className='w-12 h-12 rounded object-cover border'
                   />

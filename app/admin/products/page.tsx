@@ -8,7 +8,7 @@ interface Product {
   id: number;
   name: string;
   slug: string;
-  imageUrl?: string | null;
+  images: { id: number; url: string; sortOrder: number }[];
   status: 'ACTIVE' | 'ARCHIVED' | 'DRAFT';
   category: { id: number; name: string } | null;
   items: { id: number; price: number | null }[];

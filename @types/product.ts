@@ -2,7 +2,6 @@ export type Product = {
   id: number;
   name: string;
   slug: string;
-  imageUrl?: string | null;
   status: 'ACTIVE' | 'ARCHIVED' | 'DRAFT';
   categoryId: number;
   shortDesc?: string | null;
